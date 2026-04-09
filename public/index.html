@@ -309,7 +309,7 @@ function AuthScreen(p){var _e=useState("");var em=_e[0],sE=_e[1];var _p=useState
   function login(){sEr("");var u=p.users.find(function(x){return x.email===em});if(!u){sEr("Vartotojas nerastas. Kreipkitės į administratorių.");return}if(u.password!==pw){sEr("Neteisingas slaptažodis");return}p.onAuth(u)}
   return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,padding:16}}><div style={{width:"100%",maxWidth:380,textAlign:"center"}}>
     <div style={{width:52,height:52,borderRadius:12,background:"linear-gradient(135deg,"+C.ac+",#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px",boxShadow:"0 8px 28px "+C.ac+"33"}}>📐</div>
-    <h1 style={{fontSize:22,fontWeight:800,color:C.tx,marginBottom:2}}>Geopoint</h1><p style={{color:C.t2,fontSize:11,marginBottom:20}}>Geodezijos užsakymų valdymo sistema</p>
+    <h1 style={{fontSize:22,fontWeight:800,color:C.tx,marginBottom:2}}>Geopoint MAX</h1><p style={{color:C.t2,fontSize:11,marginBottom:20}}>Geodezijos užsakymų valdymo sistema</p>
     <div style={{background:C.s1,border:"1px solid "+C.b1,borderRadius:12,padding:20,textAlign:"left"}}><div style={{fontSize:12,fontWeight:700,color:C.t2,marginBottom:12,fontFamily:F}}>🔑 Prisijungimas</div>
       <Inp label="El. paštas" type="email" value={em} onChange={sE} ph="vardas@imone.lt" req/><Inp label="Slaptažodis" type="password" value={pw} onChange={sP} ph="••••••••" req/>
       {err&&<div style={{color:C.rd,fontSize:10,marginBottom:6,fontFamily:F}}>{err}</div>}
