@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geopoint — Geodezijos užsakymų valdymo sistema</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📐</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+<script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0B0D13;overflow:hidden}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#242A3A;border-radius:3px}
+select option{background:#11141C;color:#E4E7F0}
+input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+var {useState, useEffect, useRef} = React;
+var {BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend} = Recharts;
+
+
+var F = "'Outfit', system-ui, sans-serif";
+var FM = "'IBM Plex Mono', monospace";
+var C = {
+  bg:"#0B0D13",s1:"#11141C",s2:"#171B26",s3:"#1D2233",
+  b1:"#242A3A",b2:"#303850",tx:"#E4E7F0",t2:"#8E95AB",t3:"#5A6178",
+  ac:"#3B82F6",acH:"#60A5FA",acD:"rgba(59,130,246,.12)",
+  gn:"#10B981",gnD:"rgba(16,185,129,.12)",rd:"#EF4444",rdD:"rgba(239,68,68,.12)",
+  yl:"#EAB308",ylD:"rgba(234,179,8,.12)",vl:"#8B5CF6",vlD:"rgba(139,92,246,.12)",
+  or:"#F97316",orD:"rgba(249,115,22,.12)",pk:"#EC4899",
+};
+
+var STATUS_MAP = {
+  Naujas:{bg:C.acD,c:C.ac,dot:C.ac},
+  Patvirtintas:{bg:C.vlD,c:C.vl,dot:C.vl},
+  Priskirtas:{bg:C.ylD,c:C.yl,dot:C.yl},
+  Priimtas:{bg:C.orD,c:C.or,dot:C.or},
+  Pamatuota:{bg:"rgba(59,130,246,.15)",c:"#60A5FA",dot:"#60A5FA"},
+  Braizoma:{bg:"rgba(239,68,68,.12)",c:"#F87171",dot:"#F87171"},
+  Derinama:{bg:"rgba(245,158,11,.12)",c:"#FBBF24",dot:"#FBBF24"},
+  LaukiaPatvirtinimo:{bg:"rgba(168,85,247,.12)",c:"#A855F7",dot:"#A855F7"},
+  Ivykdytas:{bg:C.gnD,c:C.gn,dot:C.gn},
+  Atmestas:{bg:C.rdD,c:C.rd,dot:C.rd},
+};
+var SL={Naujas:"Naujas",Patvirtintas:"Patvirtintas",Priskirtas:"Priskirtas",Priimtas:"Priimtas",Pamatuota:"Pamatuota",Braizoma:"Braižoma",Derinama:"Derinama",LaukiaPatvirtinimo:"Laukia patvirtinimo",Ivykdytas:"Įvykdytas",Atmestas:"Atmestas"};
+
+var ORDER_TYPES=["Topografines nuotraukos matavimas","Ispildomosios nuotraukos matavimas","Nuzymejimai","Suliniu korteliu parengimas","Zymu parengimas","SHP parengimas"];
+var TL={"Topografines nuotraukos matavimas":"Topografinės nuotraukos matavimas","Ispildomosios nuotraukos matavimas":"Išpildomosios nuotraukos matavimas","Nuzymejimai":"Nužymėjimai","Suliniu korteliu parengimas":"Šulinių kortelių parengimas","Zymu parengimas":"Žymų parengimas","SHP parengimas":"SHP parengimas"};
+var TS={"Topografines nuotraukos matavimas":"TOPO","Ispildomosios nuotraukos matavimas":"IŠPILD","Nuzymejimai":"NUŽYM","Suliniu korteliu parengimas":"ŠULIN","Zymu parengimas":"ŽYMŲ","SHP parengimas":"SHP"};
+var TC={TOPO:"#3B82F6","IŠPILD":"#F59E0B","NUŽYM":"#10B981","ŠULIN":"#8B5CF6","ŽYMŲ":"#F97316",SHP:"#EC4899"};
+var FIELD_TYPES=["Topografines nuotraukos matavimas","Ispildomosios nuotraukos matavimas","Nuzymejimai","Suliniu korteliu parengimas"];
+var ROLES={orderer:"Užsakovas",admin:"Administratorius",surveyor:"Geodezininkas"};
+var WDAYS_S=["Pr","An","Tr","Kt","Pn","Št","Sk"];
+var MONTHS_LT=["Sausis","Vasaris","Kovas","Balandis","Gegužė","Birželis","Liepa","Rugpjūtis","Rugsėjis","Spalis","Lapkritis","Gruodis"];
+var CELL_COLORS={field:"#EAB308",draft:"#EF4444",holiday:"#7C3AED",dayoff:"#4B5563",sick:"#F97316"};
+var CHART_COLORS=["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#F97316","#06B6D4"];
+
+// All selectable statuses for surveyor
+var SURV_STATUSES=["Priimtas","Pamatuota","Braizoma","Derinama","LaukiaPatvirtinimo"];
+
+var uid=function(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)};
+var now=function(){return new Date().toISOString().slice(0,16).replace("T"," ")};
+
+async function sGet(k){try{var r=await fetch("/api/store/"+encodeURIComponent(k));var d=await r.json();return d.value}catch(e){return null}}
+async function sSet(k,v){try{await fetch("/api/store/"+encodeURIComponent(k),{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({value:v})})}catch(e){}}
+
+function estimateShpArea(file){return new Promise(function(resolve){var reader=new FileReader();reader.onload=function(e){try{var buf=e.target.result;if(buf.byteLength<68){resolve(null);return}var dv=new DataView(buf);var x1=dv.getFloat64(36,true),y1=dv.getFloat64(44,true),x2=dv.getFloat64(52,true),y2=dv.getFloat64(60,true);if(x1>100000&&x2<900000&&y1>5800000&&y2<6500000){resolve(Math.round(Math.abs((x2-x1)*(y2-y1))/10000*100)/100)}else if(x1>20&&x2<30&&y1>53&&y2<57){var ml=(y1+y2)/2;resolve(Math.round(Math.abs((x2-x1)*111320*Math.cos(ml*Math.PI/180)*(y2-y1)*110540)/10000*100)/100)}else resolve(null)}catch(er){resolve(null)}};reader.onerror=function(){resolve(null)};reader.readAsArrayBuffer(file)})}
+
+function getMonday(d){var dt=new Date(d);var day=dt.getDay();var diff=dt.getDate()-day+(day===0?-6:1);dt.setDate(diff);return dt}
+function fmtDate(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function addDays(d,n){var r=new Date(d);r.setDate(r.getDate()+n);return r}
+function getWeekDates(mon){var a=[];for(var i=0;i<7;i++)a.push(fmtDate(addDays(mon,i)));return a}
+function getWeekNum(d){var dt=new Date(d);dt.setHours(0,0,0,0);dt.setDate(dt.getDate()+3-(dt.getDay()+6)%7);var w1=new Date(dt.getFullYear(),0,4);return 1+Math.round(((dt-w1)/86400000-(dt.getDay()+6)%7+((new Date(w1)).getDay()+6)%7)/7)}
+function countFieldWork(orders,date){return orders.filter(function(o){return o.dueDate===date&&FIELD_TYPES.indexOf(o.type)!==-1&&o.status!=="Atmestas"&&o.assignedTo}).length}
+
+// Lithuanian public holidays (fixed dates + Easter-based)
+function getLTHolidays(year){
+  var fixed=[year+"-01-01",year+"-02-16",year+"-03-11",year+"-05-01",year+"-06-24",year+"-07-06",year+"-08-15",year+"-11-01",year+"-11-02",year+"-12-24",year+"-12-25",year+"-12-26"];
+  // Easter calculation (Gauss algorithm)
+  var a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),eM=Math.floor((h+l-7*m+114)/31),eD=(h+l-7*m+114)%31+1;
+  var easter=new Date(year,eM-1,eD);
+  var easterStr=fmtDate(easter);
+  var easterMon=fmtDate(addDays(easter,1));
+  fixed.push(easterStr);fixed.push(easterMon);
+  return fixed;
+}
+var _holidays2025=getLTHolidays(2025);var _holidays2026=getLTHolidays(2026);var _holidays2027=getLTHolidays(2027);
+var ALL_HOLIDAYS=[].concat(_holidays2025,_holidays2026,_holidays2027);
+function isHoliday(dateStr){return ALL_HOLIDAYS.indexOf(dateStr)!==-1}
+function isNonWorkDay(dateStr){var d=new Date(dateStr);var day=d.getDay();return day===0||day===6||isHoliday(dateStr)}
+
+// SEED
+var SEED_USERS=[
+  {id:"admin1",name:"Tomas Ruzveltas",email:"tomas.ruzveltas@energolt.eu",password:"Energo99",role:"admin",mustChangePassword:false},
+];
+var _today=new Date();var _mon=getMonday(_today);
+var SEED_ORDERS=[];
+var SEED_SCHED=[];
+
+/* ═════════ UI ═══════════════════════════════════════════════ */
+function Badge(p){return <span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:14,background:p.bg||C.acD,color:p.color||C.ac,fontSize:10,fontWeight:700,fontFamily:F,border:"1px solid "+(p.color||C.ac)+"22",whiteSpace:"nowrap"}}>{p.children}</span>}
+function StatusBadge(p){var s=STATUS_MAP[p.status]||STATUS_MAP.Naujas;return <Badge color={s.c} bg={s.bg}><span style={{width:5,height:5,borderRadius:"50%",background:s.dot}}/>{SL[p.status]||p.status}</Badge>}
+function TypeBadge(p){var sh=TS[p.type]||"?";var co=TC[sh]||C.ac;return <Badge color={co} bg={co+"15"}>{sh}</Badge>}
+function Btn(p){var _h=useState(false);var h=_h[0],sH=_h[1];var vr=p.v||"primary";var vs={primary:{bg:C.ac,bh:C.acH,c:"#fff",bd:"none"},secondary:{bg:C.s3,bh:C.b1,c:C.tx,bd:"1px solid "+C.b1},ghost:{bg:"transparent",bh:C.s3,c:C.t2,bd:"none"},danger:{bg:C.rdD,bh:"#EF444433",c:C.rd,bd:"1px solid "+C.rd+"33"}};var st=vs[vr]||vs.primary;return <button onClick={p.onClick} disabled={p.disabled} onMouseEnter={function(){sH(true)}} onMouseLeave={function(){sH(false)}} style={Object.assign({padding:p.sm?"4px 10px":"8px 16px",borderRadius:8,background:h&&!p.disabled?st.bh:st.bg,color:p.disabled?C.t3:st.c,border:st.bd,cursor:p.disabled?"not-allowed":"pointer",fontFamily:F,fontSize:p.sm?11:13,fontWeight:600,transition:"all .15s",opacity:p.disabled?.5:1,display:"inline-flex",alignItems:"center",gap:6},p.style||{})}>{p.children}</button>}
+function Inp(p){var _f=useState(false);var f=_f[0],sF=_f[1];var t=p.type||"text";var s={width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid "+(f?C.ac:C.b1),background:C.bg,color:C.tx,fontFamily:F,fontSize:13,outline:"none",transition:"border .15s",resize:p.ml?"vertical":undefined,boxSizing:"border-box"};return <div style={{marginBottom:12}}>{p.label&&<label style={{display:"block",fontSize:11,fontWeight:600,color:C.t2,marginBottom:4,fontFamily:F}}>{p.label}{p.req&&<span style={{color:C.rd}}> *</span>}</label>}{p.ml?<textarea value={p.value} onChange={function(e){p.onChange(e.target.value)}} placeholder={p.ph} rows={p.rows||3} onFocus={function(){sF(true)}} onBlur={function(){sF(false)}} style={s}/>:<input type={t} value={p.value} onChange={function(e){p.onChange(e.target.value)}} placeholder={p.ph} onFocus={function(){sF(true)}} onBlur={function(){sF(false)}} style={s} min={p.min} step={p.step}/>}</div>}
+function Sel(p){var _f=useState(false);var f=_f[0],sF=_f[1];return <div style={{marginBottom:12}}>{p.label&&<label style={{display:"block",fontSize:11,fontWeight:600,color:C.t2,marginBottom:4,fontFamily:F}}>{p.label}{p.req&&<span style={{color:C.rd}}> *</span>}</label>}<select value={p.value} onChange={function(e){p.onChange(e.target.value)}} onFocus={function(){sF(true)}} onBlur={function(){sF(false)}} style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid "+(f?C.ac:C.b1),background:C.bg,color:p.value?C.tx:C.t3,fontFamily:F,fontSize:13,outline:"none",cursor:"pointer",appearance:"none",boxSizing:"border-box",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%235A6178' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 10px center"}}><option value="" disabled>{p.ph||"Pasirinkite..."}</option>{p.options.map(function(o){var val=typeof o==="string"?o:o.value;var lab=typeof o==="string"?o:o.label;return <option key={val} value={val}>{lab}</option>})}</select></div>}
+function Modal(p){if(!p.open)return null;return <div onClick={p.onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",backdropFilter:"blur(5px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}><div onClick={function(e){e.stopPropagation()}} style={{background:C.s1,border:"1px solid "+C.b1,borderRadius:16,width:"100%",maxWidth:p.w||520,maxHeight:"90vh",overflow:"auto",boxShadow:"0 24px 48px rgba(0,0,0,.5)"}}><div style={{padding:"14px 18px",borderBottom:"1px solid "+C.b1,display:"flex",justifyContent:"space-between",alignItems:"center"}}><h3 style={{margin:0,fontSize:15,fontWeight:700,color:C.tx,fontFamily:F}}>{p.title}</h3><button onClick={p.onClose} style={{background:"none",border:"none",color:C.t3,fontSize:18,cursor:"pointer"}}>✕</button></div><div style={{padding:18}}>{p.children}</div></div></div>}
+function Av(p){var s=p.size||32;var ini=p.name?p.name.split(" ").map(function(w){return w[0]}).join("").slice(0,2).toUpperCase():"?";var h=(p.name||"").split("").reduce(function(a,c){return a+c.charCodeAt(0)},0);return <div style={{width:s,height:s,borderRadius:"50%",background:"hsl("+(h%360)+",48%,40%)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:s*.35,fontWeight:700,fontFamily:FM,flexShrink:0}}>{ini}</div>}
+function Empty(p){return <div style={{textAlign:"center",padding:"40px 20px"}}><div style={{fontSize:40,marginBottom:8}}>{p.icon}</div><div style={{fontSize:14,fontWeight:600,color:C.t2,fontFamily:F}}>{p.title}</div></div>}
+function FileZone(p){var _d=useState(false);var drag=_d[0],sD=_d[1];var ref=useRef();var accept=p.accept||"*";var hf=async function(fl){var arr=Array.from(fl);var nf=arr.map(function(f){return{name:f.name,size:f.size,id:uid(),raw:f}});p.setFiles(function(prev){return prev.concat(nf)});for(var i=0;i<arr.length;i++){if(arr[i].name.endsWith(".shp")&&p.onAreaCalc){var ha=await estimateShpArea(arr[i]);if(ha!==null)p.onAreaCalc(ha)}}};return <div style={{marginBottom:12}}><label style={{display:"block",fontSize:11,fontWeight:600,color:C.t2,marginBottom:4,fontFamily:F}}>{p.label||"Failai"}{p.required&&<span style={{color:C.rd}}> *</span>}</label><div onDragOver={function(e){e.preventDefault();sD(true)}} onDragLeave={function(){sD(false)}} onDrop={function(e){e.preventDefault();sD(false);hf(e.dataTransfer.files)}} onClick={function(){ref.current&&ref.current.click()}} style={{border:"2px dashed "+(drag?C.ac:C.b1),borderRadius:10,padding:"18px 14px",textAlign:"center",cursor:"pointer",background:drag?C.acD:C.bg}}><input ref={ref} type="file" multiple accept={accept} onChange={function(e){hf(e.target.files)}} style={{display:"none"}}/><div style={{fontSize:20,marginBottom:3}}>📂</div><div style={{color:C.t2,fontSize:11,fontFamily:F}}>Nutempkite arba <span style={{color:C.ac,fontWeight:600}}>pasirinkite</span></div></div>{p.files.length>0&&<div style={{marginTop:5}}>{p.files.map(function(f){return <div key={f.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:C.bg,borderRadius:5,border:"1px solid "+C.b1,marginBottom:2}}><span style={{fontSize:11,color:C.tx,fontFamily:F}}>📄 {f.name}</span><button onClick={function(){p.setFiles(function(pr){return pr.filter(function(x){return x.id!==f.id})})}} style={{background:"none",border:"none",color:C.t3,cursor:"pointer",fontSize:11}}>✕</button></div>})}</div>}</div>}
+
+/* ═════ ORDER HISTORY TIMELINE ═══════════════════════════════ */
+function HistoryTimeline(p){
+  if(!p.history||p.history.length===0)return <div style={{fontSize:11,color:C.t3,fontFamily:F}}>Nėra istorijos.</div>;
+  return <div style={{display:"flex",flexDirection:"column",gap:0}}>
+    {p.history.map(function(h,i){var s=STATUS_MAP[h.status]||STATUS_MAP.Naujas;var isLast=i===p.history.length-1;
+      return <div key={i} style={{display:"flex",gap:10,position:"relative"}}>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",width:16}}>
+          <div style={{width:10,height:10,borderRadius:"50%",background:s.dot,border:"2px solid "+C.s1,zIndex:1,flexShrink:0}}/>
+          {!isLast&&<div style={{width:2,flex:1,background:C.b1,marginTop:-1}}/>}
+        </div>
+        <div style={{paddingBottom:isLast?0:10,flex:1}}>
+          <div style={{fontSize:11,fontWeight:600,color:s.c,fontFamily:F}}>{SL[h.status]||h.status}</div>
+          <div style={{fontSize:9,color:C.t3,fontFamily:FM}}>{h.date}{h.note?" — "+h.note:""}</div>
+        </div>
+      </div>})}
+  </div>}
+
+/* ═════ GANTT SCHEDULE ═══════════════════════════════════════ */
+function WeekSchedule(p){
+  var dates=getWeekDates(p.weekStart);var wn=getWeekNum(p.weekStart);var todayStr=fmtDate(new Date());
+  var _m=useState(false);var showAdd=_m[0],sShow=_m[1];var _sd=useState("");var selD=_sd[0],sSD=_sd[1];var _ss=useState("");var selS=_ss[0],sSS=_ss[1];var _st=useState("draft");var selT=_st[0],sST=_st[1];var _sl=useState("");var selL=_sl[0],sSL=_sl[1];
+  function openAdd(sid,d){sSS(sid);sSD(d);sST("draft");sSL("braižo");sShow(true)}
+  function doAdd(){if(selS&&selD){p.onAddEntry({id:uid(),surveyorId:selS,date:selD,type:selT,label:selL||selT});sShow(false)}}
+  return <div>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+      <button onClick={p.onPrev} style={{background:"none",border:"none",color:C.t2,fontSize:20,cursor:"pointer"}}>◂</button>
+      <div style={{textAlign:"center"}}><div style={{fontSize:15,fontWeight:800,color:C.tx,fontFamily:F}}>{wn} savaitė</div><div style={{fontSize:10,color:C.t3,fontFamily:F}}>{dates[0]} — {dates[6]}</div></div>
+      <button onClick={p.onNext} style={{background:"none",border:"none",color:C.t2,fontSize:20,cursor:"pointer"}}>▸</button></div>
+    <div style={{display:"flex",gap:10,marginBottom:10,flexWrap:"wrap"}}>{[{c:CELL_COLORS.field,l:"Matavimas (lauko darbai)"},{c:CELL_COLORS.draft,l:"Braižymas"},{c:CELL_COLORS.holiday,l:"Atostogos"},{c:CELL_COLORS.dayoff,l:"Nedarbo / šventinė diena"},{c:CELL_COLORS.sick,l:"Nedarbingumas"}].map(function(x){return <div key={x.l} style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:12,borderRadius:2,background:x.c}}/><span style={{fontSize:10,color:C.t2,fontFamily:F}}>{x.l}</span></div>})}</div>
+    <div style={{overflowX:"auto",borderRadius:10,border:"1px solid "+C.b1}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:880,fontFamily:F,fontSize:11}}>
+        <thead><tr style={{background:C.s2}}>
+          <th style={{padding:"8px 12px",textAlign:"left",borderBottom:"2px solid "+C.b1,borderRight:"2px solid "+C.b1,color:C.t2,fontWeight:700,width:155,position:"sticky",left:0,background:C.s2,zIndex:2}}>Geodezininkas</th>
+          {dates.map(function(d,i){var isT=d===todayStr;var isW=isNonWorkDay(d);
+            // Check for global dayoff entries on this date
+            var globalDayoff=p.schedule.some(function(e){return e.date===d&&e.type==="dayoff"&&!e.surveyorId});
+            var isDayOff=isW||globalDayoff;
+            return <th key={d} style={{padding:"6px 4px",textAlign:"center",borderBottom:"2px solid "+C.b1,borderRight:i<6?"1px solid "+C.b1:"none",minWidth:108,background:isT?"rgba(59,130,246,.08)":isDayOff?"#7C3AED25":C.s2,color:isT?C.ac:isDayOff?"#A78BFA":C.t2,fontWeight:700}}>
+              <div>{WDAYS_S[i]}</div><div style={{fontSize:9,fontWeight:500,marginTop:1}}>{d.slice(5)}</div>
+              {isW&&<div style={{fontSize:7,color:"#A78BFA",marginTop:1,fontWeight:800}}>{isHoliday(d)?"ŠVENTĖ":"POILSIS"}</div>}</th>})}</tr></thead>
+        <tbody>{p.surveyors.map(function(surv,si){return <tr key={surv.id}>
+          <td style={{padding:"6px 10px",borderBottom:"1px solid "+C.b1,borderRight:"2px solid "+C.b1,background:C.s1,position:"sticky",left:0,zIndex:1}}><div style={{display:"flex",alignItems:"center",gap:6}}><Av name={surv.name} size={26}/><div style={{fontSize:11,fontWeight:700,color:C.tx}}>{surv.name}</div></div></td>
+          {dates.map(function(d,i){var isT=d===todayStr;var isW=isNonWorkDay(d);
+            var dayO=p.orders.filter(function(o){return o.assignedTo===surv.id&&o.dueDate===d&&o.status!=="Atmestas"});
+            var dayE=p.schedule.filter(function(e){return e.surveyorId===surv.id&&e.date===d});
+            var hasHoliday=dayE.some(function(e){return e.type==="holiday"});
+            var hasDayOff=dayE.some(function(e){return e.type==="dayoff"});
+            var cellBg=isW?"#7C3AED18":hasHoliday?"#7C3AED15":hasDayOff?"#4B556322":isT?"rgba(59,130,246,.04)":"transparent";
+            return <td key={d} style={{padding:2,borderBottom:"1px solid "+C.b1,borderRight:i<6?"1px solid "+C.b1:"none",verticalAlign:"top",background:cellBg}}>
+              <div style={{display:"flex",flexDirection:"column",gap:1,minHeight:38}}>
+                {dayO.map(function(o){return <div key={o.id} onClick={function(){p.onClickOrder&&p.onClickOrder(o)}} style={{padding:"2px 5px",borderRadius:3,background:CELL_COLORS.field,color:"#000",fontSize:9,fontWeight:700,cursor:"pointer",lineHeight:1.2}}>{o.address.length>25?o.address.slice(0,25)+"…":o.address}</div>})}
+                {dayE.map(function(e){var bg=CELL_COLORS[e.type]||CELL_COLORS.draft;return <div key={e.id} style={{padding:"2px 5px",borderRadius:3,background:bg,color:"#fff",fontSize:9,fontWeight:700,lineHeight:1.2,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>{e.label}</span>{p.isAdmin&&<button onClick={function(ev){ev.stopPropagation();p.onRemoveEntry(e.id)}} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:9,padding:0,marginLeft:2}}>✕</button>}</div>})}
+                {p.isAdmin&&<button onClick={function(){openAdd(surv.id,d)}} style={{padding:"1px",borderRadius:2,border:"none",background:"transparent",color:C.t3,fontSize:8,cursor:"pointer",fontFamily:F}}>+</button>}
+              </div></td>})}</tr>})}</tbody></table></div>
+    <Modal open={showAdd} onClose={function(){sShow(false)}} title="Pridėti įrašą į grafiką" w={380}>
+      <div style={{fontSize:11,color:C.t2,fontFamily:F,marginBottom:10}}>{(p.surveyors.find(function(s){return s.id===selS})||{}).name} — {selD}</div>
+      <Sel label="Tipas" value={selT} onChange={function(v){sST(v);if(v==="draft")sSL("braižo");else if(v==="holiday")sSL("atostogos");else if(v==="dayoff")sSL("nedarbo diena");else if(v==="sick")sSL("nedarbingumas");else sSL("")}} options={[{value:"draft",label:"Braižymas"},{value:"holiday",label:"Atostogos"},{value:"dayoff",label:"Nedarbo / šventinė diena"},{value:"sick",label:"Nedarbingumas"}]}/>
+      <Inp label="Pavadinimas" value={selL} onChange={sSL} ph="braižo"/>
+      <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" onClick={function(){sShow(false)}} sm>Atšaukti</Btn><Btn onClick={doAdd} sm>Pridėti</Btn></div></Modal></div>}
+
+/* ═════ ORDER FORM ═══════════════════════════════════════════ */
+function OrderForm(p){
+  var _t=useState("");var tp=_t[0],sT=_t[1];var _d=useState("");var du=_d[0],sD=_d[1];var _a=useState("");var ad=_a[0],sA=_a[1];var _ds=useState("");var de=_ds[0],sDs=_ds[1];var _e=useState(p.user.email||"");var em=_e[0],sE=_e[1];var _cn=useState("");var cn=_cn[0],sCN=_cn[1];var _cp=useState("");var cp=_cp[0],sCP=_cp[1];var _f=useState([]);var fi=_f[0],sF=_f[1];var _ar=useState(null);var ar=_ar[0],sAr=_ar[1];var _len=useState("");var len=_len[0],sLen=_len[1];var _dw=useState("");var dw=_dw[0],sDW=_dw[1];
+  var isT=tp==="Topografines nuotraukos matavimas";var isI=tp==="Ispildomosios nuotraukos matavimas";var isFW=FIELD_TYPES.indexOf(tp)!==-1;
+  function checkDate(date){if(!date||!isFW){sDW("");return}var c=countFieldWork(p.orders,date);if(c>=2){sDW("Ši data jau užimta ("+c+"/2 lauko darbai). Pasirinkite kitą datą.");sD("")}else sDW("")}
+  var ok=tp&&du&&ad&&em&&(!isT||fi.length>0)&&(!isI||(cn&&cp&&len&&fi.length>0));
+  return <div style={{maxWidth:540}}>
+    <h2 style={{fontSize:18,fontWeight:800,color:C.tx,fontFamily:F,marginBottom:2}}>Naujas užsakymas</h2>
+    <p style={{fontSize:11,color:C.t2,fontFamily:F,marginBottom:18}}>Užpildykite formą ir pateikite geodezijos skyriui.</p>
+    <Sel label="Užsakymo tipas" value={tp} onChange={function(v){sT(v);sDW("")}} options={ORDER_TYPES.map(function(t){return{value:t,label:TL[t]}})} req/>
+    <Inp label="Pageidaujama data" type="date" value={du} onChange={function(v){sD(v);checkDate(v)}} req/>
+    {dw&&<div style={{color:C.rd,fontSize:11,marginTop:-8,marginBottom:10,fontFamily:F}}>⚠️ {dw}</div>}
+    <Inp label="Objekto adresas" value={ad} onChange={sA} ph="Pvz.: Vilniaus g. 15, Vilnius" req/>
+    <Inp label="Papildomas aprašymas" value={de} onChange={sDs} ml rows={2} ph="Papildoma informacija..."/>
+    <Inp label="El. paštas (patvirtinimui)" type="email" value={em} onChange={sE} ph="vardas@imone.lt" req/>
+    {isI&&<div style={{background:C.ylD,border:"1px solid "+C.yl+"33",borderRadius:10,padding:14,marginBottom:12}}>
+      <div style={{fontSize:11,fontWeight:700,color:C.yl,marginBottom:8,fontFamily:F}}>⚠️ Papildoma informacija (išpildomoji nuotrauka)</div>
+      <Inp label="Objekto ilgis (metrais)" type="number" value={len} onChange={sLen} req ph="Pvz.: 150" min="1" step="1"/>
+      <Inp label="Atsakingas asmuo (vardas pavardė)" value={cn} onChange={sCN} req ph="Petras Petraitis"/>
+      <Inp label="Telefono numeris" value={cp} onChange={sCP} req ph="+370 600 00000"/>
+      <FileZone files={fi} setFiles={sF} required label="Projekto DWG failas" accept=".dwg,.dxf,.zip"/></div>}
+    {isT&&<div><FileZone files={fi} setFiles={sF} required label="SHP failas (užsakymo plotas)" accept=".shp,.shx,.dbf,.prj,.cpg,.zip" onAreaCalc={sAr}/>
+      {ar!==null&&<div style={{background:C.gnD,border:"1px solid "+C.gn+"33",borderRadius:8,padding:"7px 10px",marginBottom:12,display:"flex",alignItems:"center",gap:6}}><span>📐</span><div><div style={{fontSize:10,fontWeight:700,color:C.gn,fontFamily:F}}>Plotas nustatytas automatiškai</div><div style={{fontSize:15,fontWeight:800,color:C.gn,fontFamily:FM}}>{ar} ha</div></div></div>}</div>}
+    {tp&&!isT&&!isI&&<FileZone files={fi} setFiles={sF} label="Failai (neprivaloma)"/>}
+    <div style={{display:"flex",gap:6,marginTop:14,justifyContent:"flex-end"}}>{p.onCancel&&<Btn v="secondary" onClick={p.onCancel}>Atšaukti</Btn>}
+      <Btn onClick={function(){if(!ok)return;p.onSubmit({id:uid(),type:tp,dueDate:du,address:ad,description:de,email:em,contactName:isI?cn:null,contactPhone:isI?cp:null,files:fi.map(function(f){return{name:f.name,size:f.size,id:f.id}}),areaHa:isT?ar:null,lengthM:isI?parseInt(len)||null:null,createdBy:p.user.id,status:"Naujas",assignedTo:null,createdAt:fmtDate(new Date()),completedAt:null,confirmedByAdmin:false,history:[{status:"Naujas",date:fmtDate(new Date())}]})}} disabled={!ok}>📤 Pateikti užsakymą</Btn></div></div>}
+
+/* ═════ ORDER DETAIL ═════════════════════════════════════════ */
+function OrderDetail(p){
+  var o=p.order;var _s=useState(o.status);var st=_s[0],sS=_s[1];var _a=useState(o.assignedTo||"");var at=_a[0],sA=_a[1];var _d=useState(o.dueDate||"");var dd=_d[0],sD=_d[1];
+  var cr=p.users.find(function(u){return u.id===o.createdBy});var as=o.assignedTo?p.surveyors.find(function(s){return s.id===o.assignedTo}):null;var isA=p.user.role==="admin",isS=p.user.role==="surveyor";
+  function save(){
+    var u=Object.assign({},o,{dueDate:dd,history:(o.history||[]).slice()});
+    if(isA){if(at&&!o.assignedTo){u.assignedTo=at;u.status="Priskirtas";u.history.push({status:"Priskirtas",date:fmtDate(new Date())})}else if(at&&o.assignedTo!==at){u.assignedTo=at;u.history.push({status:"Priskirtas",date:fmtDate(new Date()),note:"priskirtas kitam geodezininkui"})}
+      if(st==="Patvirtintas"&&o.status==="Naujas"){u.status="Patvirtintas";u.confirmedByAdmin=true;u.history.push({status:"Patvirtintas",date:fmtDate(new Date())})}
+      if(st==="Ivykdytas"&&o.status==="LaukiaPatvirtinimo"){u.status="Ivykdytas";u.completedAt=fmtDate(new Date());u.history.push({status:"Ivykdytas",date:fmtDate(new Date())})}
+      if(st==="Atmestas"){u.status="Atmestas";u.history.push({status:"Atmestas",date:fmtDate(new Date())})}}
+    if(isS&&o.assignedTo===p.user.id&&st!==o.status){u.status=st;u.history.push({status:st,date:fmtDate(new Date())})}
+    p.onUpdate(u);p.onClose()}
+  var adminSts=o.status==="Naujas"?["Naujas","Patvirtintas","Atmestas"]:o.status==="LaukiaPatvirtinimo"?["LaukiaPatvirtinimo","Ivykdytas","Atmestas"]:["Patvirtintas","Priskirtas","Atmestas"];
+  return <Modal open={true} onClose={p.onClose} title={"Užsakymas #"+o.id.slice(-5).toUpperCase()} w={600}>
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}><StatusBadge status={o.status}/><TypeBadge type={o.type}/>{o.areaHa&&<Badge color={C.gn} bg={C.gnD}>{"📐 "+o.areaHa+" ha"}</Badge>}{o.lengthM&&<Badge color={C.or} bg={C.orD}>{"📏 "+o.lengthM+" m"}</Badge>}</div>
+      <div><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:2,fontFamily:F,textTransform:"uppercase",letterSpacing:1}}>Tipas</div><div style={{fontSize:12,color:C.tx,fontFamily:F}}>{TL[o.type]||o.type}</div></div>
+      <div><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:2,fontFamily:F,textTransform:"uppercase",letterSpacing:1}}>Adresas</div><div style={{fontSize:13,color:C.tx,fontFamily:F}}>{o.address}</div></div>
+      {o.description&&<div><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:2,fontFamily:F,textTransform:"uppercase",letterSpacing:1}}>Aprašymas</div><div style={{fontSize:11,color:C.t2,fontFamily:F,background:C.bg,padding:8,borderRadius:6,border:"1px solid "+C.b1}}>{o.description}</div></div>}
+      {o.contactName&&<div style={{background:C.ylD,borderRadius:8,padding:8,border:"1px solid "+C.yl+"33"}}><div style={{fontSize:10,fontWeight:700,color:C.yl,marginBottom:3,fontFamily:F}}>👷 Kontaktinis asmuo objekte</div><div style={{fontSize:11,color:C.tx,fontFamily:F}}>{o.contactName} · {o.contactPhone}</div></div>}
+      {o.files&&o.files.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:2,fontFamily:F,textTransform:"uppercase",letterSpacing:1}}>Failai</div>{o.files.map(function(f,i){return <div key={i} style={{display:"flex",alignItems:"center",gap:5,padding:"4px 6px",background:C.bg,borderRadius:5,border:"1px solid "+C.b1,marginBottom:2}}><span>📄</span><span style={{fontSize:10,color:C.tx,fontFamily:F}}>{f.name}</span></div>})}</div>}
+      <div style={{display:"flex",gap:12}}><div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:2,textTransform:"uppercase",letterSpacing:1,fontFamily:F}}>Užsakovas</div><div style={{display:"flex",alignItems:"center",gap:5}}><Av name={cr?cr.name:""} size={22}/><span style={{fontSize:11,color:C.tx,fontFamily:F}}>{cr?cr.name:"-"}</span></div></div>
+        <div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:2,textTransform:"uppercase",letterSpacing:1,fontFamily:F}}>Geodezininkas</div>{as?<div style={{display:"flex",alignItems:"center",gap:5}}><Av name={as.name} size={22}/><span style={{fontSize:11,color:C.tx,fontFamily:F}}>{as.name}</span></div>:<span style={{fontSize:11,color:C.t3}}>Nepriskirtas</span>}</div></div>
+      <div style={{fontSize:10,color:C.t3,fontFamily:FM}}>Sukurta: {o.createdAt} | Terminas: <strong style={{color:C.ac}}>{o.dueDate}</strong>{o.completedAt?" | Atlikta: "+o.completedAt:""}</div>
+
+      {/* History */}
+      <div><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:6,fontFamily:F,textTransform:"uppercase",letterSpacing:1}}>Užsakymo istorija</div>
+        <div style={{background:C.bg,borderRadius:8,padding:12,border:"1px solid "+C.b1}}><HistoryTimeline history={o.history}/></div></div>
+
+      {/* Admin actions */}
+      {isA&&o.status!=="Ivykdytas"&&<div style={{borderTop:"1px solid "+C.b1,paddingTop:12}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:8,fontFamily:F,textTransform:"uppercase",letterSpacing:1}}>Administravimas</div>
+        <Sel label="Būsena" value={st} onChange={sS} options={adminSts.map(function(s){return{value:s,label:SL[s]||s}})}/>
+        {o.status==="LaukiaPatvirtinimo"&&<div style={{background:C.vlD,borderRadius:8,padding:8,marginBottom:8,border:"1px solid "+C.vl+"33"}}><div style={{fontSize:11,color:C.vl,fontFamily:F,fontWeight:600}}>⏳ Geodezininkas pažymėjo kaip įvykdytą. Patvirtinkite.</div></div>}
+        <Sel label="Priskirti geodezininkui" value={at} onChange={sA} options={p.surveyors.map(function(s){return{value:s.id,label:s.name}})} ph="Pasirinkite geodezininką..."/>
+        <Inp label="Užsakymo data" type="date" value={dd} onChange={sD}/>
+        <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" onClick={p.onClose} sm>Atšaukti</Btn>{isA&&<Btn v="danger" sm onClick={function(){p.onDelete(o.id);p.onClose()}}>🗑️ Ištrinti</Btn>}<Btn onClick={save} sm>💾 Išsaugoti</Btn></div></div>}
+
+      {/* Surveyor: all statuses available */}
+      {isS&&o.assignedTo===p.user.id&&o.status!=="Ivykdytas"&&o.status!=="LaukiaPatvirtinimo"&&<div style={{borderTop:"1px solid "+C.b1,paddingTop:12}}>
+        <Sel label="Užsakymo būsena" value={st} onChange={sS} options={SURV_STATUSES.map(function(s){return{value:s,label:SL[s]||s}})}/>
+        {st==="LaukiaPatvirtinimo"&&<div style={{background:C.vlD,borderRadius:8,padding:8,marginBottom:8,border:"1px solid "+C.vl+"33"}}><div style={{fontSize:11,color:C.vl,fontFamily:F}}>ℹ️ Pažymėjus „Laukia patvirtinimo", administratorius turės patvirtinti.</div></div>}
+        <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" onClick={p.onClose} sm>Atšaukti</Btn><Btn onClick={save} sm>💾 Išsaugoti</Btn></div></div>}
+
+      {(p.user.role==="orderer"||(isS&&(o.assignedTo!==p.user.id||o.status==="Ivykdytas"||o.status==="LaukiaPatvirtinimo")))&&<div style={{display:"flex",justifyContent:"flex-end"}}><Btn v="secondary" onClick={p.onClose} sm>Uždaryti</Btn></div>}
+    </div></Modal>}
+
+function OrderRow(p){var _h=useState(false);var h=_h[0],sH=_h[1];var o=p.order;var cr=p.users.find(function(u){return u.id===o.createdBy});var as=o.assignedTo?p.surveyors.find(function(s){return s.id===o.assignedTo}):null;
+  return <div onClick={p.onClick} onMouseEnter={function(){sH(true)}} onMouseLeave={function(){sH(false)}} style={{padding:"10px 14px",background:h?C.s3:C.s2,border:"1px solid "+(h?C.b2:C.b1),borderRadius:10,cursor:"pointer",transition:"all .15s",marginBottom:4}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5}}><div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}><span style={{fontFamily:FM,fontSize:9,color:C.t3,background:C.bg,padding:"1px 5px",borderRadius:3}}>#{o.id.slice(-5).toUpperCase()}</span><TypeBadge type={o.type}/>{o.areaHa&&<Badge color={C.gn} bg={C.gnD}>{"📐 "+o.areaHa+" ha"}</Badge>}{o.lengthM&&<Badge color={C.or} bg={C.orD}>{"📏 "+o.lengthM+" m"}</Badge>}</div><StatusBadge status={o.status}/></div>
+    <div style={{fontSize:12,fontWeight:500,color:C.tx,fontFamily:F,marginBottom:5}}>📍 {o.address}</div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:5}}><div style={{display:"flex",alignItems:"center",gap:4}}><Av name={cr?cr.name:""} size={16}/><span style={{fontSize:10,color:C.t2,fontFamily:F}}>{cr?cr.name:"-"}</span></div><div style={{display:"flex",alignItems:"center",gap:6}}>{as&&<div style={{display:"flex",alignItems:"center",gap:3}}><Av name={as.name} size={14}/><span style={{fontSize:9,color:C.t3}}>{as.name.split(" ")[0]}</span></div>}<span style={{fontSize:9,color:C.t3,fontFamily:FM}}>📅 {o.dueDate}</span></div></div></div>}
+
+function StatsRow(p){var stats=Object.keys(STATUS_MAP).map(function(s){return{s:s,n:p.orders.filter(function(o){return o.status===s}).length,d:STATUS_MAP[s].dot}}).filter(function(x){return x.n>0});if(stats.length===0)return null;return <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>{stats.map(function(x){return <div key={x.s} style={{padding:"8px 10px",borderRadius:8,background:C.s2,border:"1px solid "+C.b1,flex:"1 1 70px",minWidth:70}}><div style={{fontSize:16,fontWeight:800,color:C.tx,fontFamily:F}}>{x.n}</div><div style={{fontSize:9,color:C.t2,fontFamily:F,display:"flex",alignItems:"center",gap:3}}><span style={{width:4,height:4,borderRadius:"50%",background:x.d}}/>{SL[x.s]||x.s}</div></div>})}</div>}
+
+/* ═════ ANALYTICS ════════════════════════════════════════════ */
+function Analytics(p){
+  var _per=useState("month");var per=_per[0],sPer=_per[1];var _m=useState(new Date().getMonth());var selM=_m[0],sM=_m[1];var _y=useState(new Date().getFullYear());var selY=_y[0],sY=_y[1];
+  function filt(ord){return ord.filter(function(o){if(o.status==="Atmestas")return false;var d=new Date(o.createdAt);if(per==="month")return d.getMonth()===selM&&d.getFullYear()===selY;if(per==="week"){var ws=getMonday(new Date(selY,selM,15));return o.createdAt>=fmtDate(ws)&&o.createdAt<=fmtDate(addDays(ws,6))}return d.getFullYear()===selY})}
+  var filtered=filt(p.orders);var completed=filtered.filter(function(o){return o.status==="Ivykdytas"});
+  var survStats=p.surveyors.map(function(s){var mine=completed.filter(function(o){return o.assignedTo===s.id});return{name:s.name.split(" ")[0],count:mine.length,ha:Math.round(mine.reduce(function(a,o){return a+(o.areaHa||0)},0)*100)/100,m:mine.reduce(function(a,o){return a+(o.lengthM||0)},0)}});
+  var orderers=p.users.filter(function(u){return u.role==="orderer"});var ordStats=orderers.map(function(u){var mine=filtered.filter(function(o){return o.createdBy===u.id});return{name:u.name,count:mine.length,ha:Math.round(mine.reduce(function(a,o){return a+(o.areaHa||0)},0)*100)/100,m:mine.reduce(function(a,o){return a+(o.lengthM||0)},0)}});
+  var typeStats=ORDER_TYPES.map(function(t){return{name:TS[t],count:filtered.filter(function(o){return o.type===t}).length}}).filter(function(x){return x.count>0});
+  return <div><h2 style={{fontSize:18,fontWeight:800,color:C.tx,fontFamily:F,marginBottom:14}}>📊 Darbų analizė</h2>
+    <div style={{display:"flex",gap:6,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}><Sel value={per} onChange={sPer} options={[{value:"week",label:"Savaitė"},{value:"month",label:"Mėnuo"},{value:"year",label:"Metai"}]}/>{per!=="year"&&<Sel value={String(selM)} onChange={function(v){sM(parseInt(v))} } options={MONTHS_LT.map(function(m,i){return{value:String(i),label:m}})}/>}<Inp type="number" value={String(selY)} onChange={function(v){sY(parseInt(v)||2026)} } style={{width:100}}/></div>
+    <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>{[{v:filtered.length,l:"Iš viso",c:C.tx},{v:completed.length,l:"Įvykdyta",c:C.gn},{v:Math.round(completed.reduce(function(a,o){return a+(o.areaHa||0)},0)*100)/100,l:"Plotas (ha)",c:C.ac},{v:completed.reduce(function(a,o){return a+(o.lengthM||0)},0),l:"Ilgis (m)",c:C.or}].map(function(x){return <div key={x.l} style={{padding:"14px 18px",borderRadius:10,background:C.s2,border:"1px solid "+C.b1,flex:"1 1 120px"}}><div style={{fontSize:24,fontWeight:800,color:x.c,fontFamily:F}}>{x.v}</div><div style={{fontSize:10,color:C.t2,fontFamily:F}}>{x.l}</div></div>})}</div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+      <div style={{background:C.s2,borderRadius:12,border:"1px solid "+C.b1,padding:16}}><div style={{fontSize:13,fontWeight:700,color:C.tx,fontFamily:F,marginBottom:12}}>Geodezininkų atlikti darbai (vnt.)</div><ResponsiveContainer width="100%" height={220}><BarChart data={survStats}><XAxis dataKey="name" tick={{fill:C.t2,fontSize:10}}/><YAxis tick={{fill:C.t3,fontSize:10}} allowDecimals={false}/><Tooltip contentStyle={{background:C.s1,border:"1px solid "+C.b1,borderRadius:8,fontSize:11,fontFamily:F}}/><Bar dataKey="count" fill={C.ac} radius={[4,4,0,0]} name="Darbai"/></BarChart></ResponsiveContainer></div>
+      <div style={{background:C.s2,borderRadius:12,border:"1px solid "+C.b1,padding:16}}><div style={{fontSize:13,fontWeight:700,color:C.tx,fontFamily:F,marginBottom:12}}>Užsakymų tipai</div><ResponsiveContainer width="100%" height={220}><PieChart><Pie data={typeStats} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={function(e){return e.name}}>{typeStats.map(function(e,i){return <Cell key={i} fill={CHART_COLORS[i%CHART_COLORS.length]}/>})}</Pie><Tooltip contentStyle={{background:C.s1,border:"1px solid "+C.b1,borderRadius:8,fontSize:11}}/><Legend wrapperStyle={{fontSize:10}}/></PieChart></ResponsiveContainer></div></div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <div style={{background:C.s2,borderRadius:12,border:"1px solid "+C.b1,padding:16}}><div style={{fontSize:13,fontWeight:700,color:C.tx,fontFamily:F,marginBottom:10}}>Geodezininkų statistika</div><table style={{width:"100%",borderCollapse:"collapse",fontFamily:F,fontSize:11}}><thead><tr style={{borderBottom:"1px solid "+C.b1}}><th style={{textAlign:"left",padding:"6px 8px",color:C.t2}}>Vardas</th><th style={{textAlign:"right",padding:"6px 8px",color:C.t2}}>Vnt.</th><th style={{textAlign:"right",padding:"6px 8px",color:C.t2}}>ha</th><th style={{textAlign:"right",padding:"6px 8px",color:C.t2}}>m</th></tr></thead><tbody>{survStats.map(function(s){return <tr key={s.name} style={{borderBottom:"1px solid "+C.b1+"40"}}><td style={{padding:"6px 8px",color:C.tx}}>{s.name}</td><td style={{textAlign:"right",padding:"6px 8px",color:C.tx,fontWeight:700}}>{s.count}</td><td style={{textAlign:"right",padding:"6px 8px",color:C.gn}}>{s.ha}</td><td style={{textAlign:"right",padding:"6px 8px",color:C.or}}>{s.m}</td></tr>})}</tbody></table></div>
+      <div style={{background:C.s2,borderRadius:12,border:"1px solid "+C.b1,padding:16}}><div style={{fontSize:13,fontWeight:700,color:C.tx,fontFamily:F,marginBottom:10}}>Užsakovų statistika</div><table style={{width:"100%",borderCollapse:"collapse",fontFamily:F,fontSize:11}}><thead><tr style={{borderBottom:"1px solid "+C.b1}}><th style={{textAlign:"left",padding:"6px 8px",color:C.t2}}>Vardas</th><th style={{textAlign:"right",padding:"6px 8px",color:C.t2}}>Vnt.</th><th style={{textAlign:"right",padding:"6px 8px",color:C.t2}}>ha</th><th style={{textAlign:"right",padding:"6px 8px",color:C.t2}}>m</th></tr></thead><tbody>{ordStats.map(function(s){return <tr key={s.name} style={{borderBottom:"1px solid "+C.b1+"40"}}><td style={{padding:"6px 8px",color:C.tx}}>{s.name}</td><td style={{textAlign:"right",padding:"6px 8px",color:C.tx,fontWeight:700}}>{s.count}</td><td style={{textAlign:"right",padding:"6px 8px",color:C.gn}}>{s.ha}</td><td style={{textAlign:"right",padding:"6px 8px",color:C.or}}>{s.m}</td></tr>})}</tbody></table></div></div></div>}
+
+/* ═════ USER MANAGEMENT ══════════════════════════════════════ */
+function UserMgmt(p){
+  var _s=useState(null);var sel=_s[0],sS=_s[1];var _p=useState("");var pw=_p[0],sP=_p[1];var _add=useState(false);var showAdd=_add[0],sAdd=_add[1];
+  var _nn=useState("");var nn=_nn[0],sNN=_nn[1];var _ne=useState("");var ne=_ne[0],sNE=_ne[1];var _np=useState("");var np=_np[0],sNP=_np[1];var _nr=useState("");var nr=_nr[0],sNR=_nr[1];
+  var _del=useState(null);var delId=_del[0],sDel=_del[1];
+  function doAdd(){if(!nn||!ne||!np||!nr||np.length<4)return;p.onAddUser({id:uid(),name:nn,email:ne,password:np,role:nr,mustChangePassword:true});sAdd(false);sNN("");sNE("");sNP("");sNR("")}
+  return <div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><h2 style={{fontSize:16,fontWeight:800,color:C.tx,fontFamily:F}}>👥 Vartotojų valdymas</h2><Btn sm onClick={function(){sAdd(true)}}>➕ Sukurti vartotoją</Btn></div>
+    <div style={{display:"flex",flexDirection:"column",gap:4}}>{p.users.map(function(u){return <div key={u.id} style={{padding:"10px 14px",background:C.s2,borderRadius:8,border:"1px solid "+C.b1,display:"flex",alignItems:"center",gap:10}}>
+      <Av name={u.name} size={34}/><div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:C.tx,fontFamily:F}}>{u.name}{u.mustChangePassword&&<span style={{fontSize:9,color:C.yl,marginLeft:6}}>⚠️ laukia slaptažodžio keitimo</span>}</div><div style={{fontSize:10,color:C.t3,fontFamily:F}}>{u.email} · {ROLES[u.role]||u.role}</div></div>
+      {u.role!=="admin"&&<Btn v="ghost" sm onClick={function(){sS(u.id);sP("")}}>🔑</Btn>}
+      {u.role!=="admin"&&<Btn v="danger" sm onClick={function(){sDel(u.id)}}>🗑️</Btn>}
+    </div>})}</div>
+    <Modal open={sel!==null} onClose={function(){sS(null)}} title="Keisti slaptažodį" w={360}><div style={{fontSize:11,color:C.t2,fontFamily:F,marginBottom:8}}>Vartotojas: {(p.users.find(function(u){return u.id===sel})||{}).name}</div><Inp label="Naujas slaptažodis" type="password" value={pw} onChange={sP} ph="Min. 4 simboliai" req/><div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sS(null)}}>Atšaukti</Btn><Btn sm disabled={pw.length<4} onClick={function(){p.onResetPw(sel,pw);sS(null)}}>Pakeisti</Btn></div></Modal>
+    <Modal open={delId!==null} onClose={function(){sDel(null)}} title="Ištrinti vartotoją?" w={360}><div style={{fontSize:12,color:C.tx,fontFamily:F,marginBottom:12}}>Ar tikrai norite ištrinti vartotoją <strong>{(p.users.find(function(u){return u.id===delId})||{}).name}</strong>?</div><div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sDel(null)}}>Atšaukti</Btn><Btn v="danger" sm onClick={function(){p.onDeleteUser(delId);sDel(null)}}>Ištrinti</Btn></div></Modal>
+    <Modal open={showAdd} onClose={function(){sAdd(false)}} title="Sukurti naują vartotoją" w={420}><Inp label="Vardas Pavardė" value={nn} onChange={sNN} req ph="Jonas Jonaitis"/><Inp label="El. paštas" type="email" value={ne} onChange={sNE} req ph="vardas@imone.lt"/><Inp label="Pradinis slaptažodis" type="text" value={np} onChange={sNP} req ph="Min. 4 simboliai"/><Sel label="Rolė" value={nr} onChange={sNR} req options={[{value:"orderer",label:"Užsakovas"},{value:"surveyor",label:"Geodezininkas"}]} ph="Pasirinkite rolę..."/><div style={{fontSize:10,color:C.t3,fontFamily:F,marginBottom:8}}>ℹ️ Vartotojas privalės pasikeisti slaptažodį pirmo prisijungimo metu.</div><div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sAdd(false)}}>Atšaukti</Btn><Btn sm disabled={!nn||!ne||np.length<4||!nr} onClick={doAdd}>Sukurti</Btn></div></Modal></div>}
+
+/* ═════ SIDEBAR ══════════════════════════════════════════════ */
+function Sidebar(p){
+  var nav={orderer:[{id:"new",ic:"➕",l:"Naujas užsakymas"},{id:"my",ic:"📋",l:"Mano užsakymai"},{id:"schedule",ic:"📅",l:"Darbų grafikas"},{id:"pw",ic:"🔑",l:"Keisti slaptažodį"}],
+    admin:[{id:"inbox",ic:"📥",l:"Gauti užsakymai"},{id:"schedule",ic:"📅",l:"Darbų grafikas"},{id:"all",ic:"📦",l:"Visi užsakymai"},{id:"analytics",ic:"📊",l:"Analizė"},{id:"users",ic:"👥",l:"Vartotojai"},{id:"pw",ic:"🔑",l:"Keisti slaptažodį"}],
+    surveyor:[{id:"assigned",ic:"📋",l:"Mano užduotys"},{id:"schedule",ic:"📅",l:"Darbų grafikas"},{id:"pw",ic:"🔑",l:"Keisti slaptažodį"}]}[p.user.role]||[];
+  return <div style={{width:230,background:C.s1,borderRight:"1px solid "+C.b1,display:"flex",flexDirection:"column",height:"100%",flexShrink:0}}>
+    <div style={{padding:"16px 14px 12px",borderBottom:"1px solid "+C.b1}}><div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,"+C.ac+",#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>📐</div><div><div style={{fontSize:13,fontWeight:800,color:C.tx,fontFamily:F}}>Geopoint</div><div style={{fontSize:9,color:C.t3,fontFamily:F}}>{ROLES[p.user.role]}</div></div></div></div>
+    <div style={{padding:"6px 5px",flex:1}}>{nav.map(function(n){return <button key={n.id} onClick={function(){p.setView(n.id)}} style={{width:"100%",display:"flex",alignItems:"center",gap:7,padding:"7px 9px",borderRadius:7,border:"none",background:p.view===n.id?C.acD:"transparent",color:p.view===n.id?C.ac:C.t2,fontFamily:F,fontSize:12,fontWeight:p.view===n.id?600:500,cursor:"pointer",textAlign:"left",marginBottom:1}}><span style={{fontSize:13}}>{n.ic}</span>{n.l}{n.id==="inbox"&&p.badge>0&&<span style={{marginLeft:"auto",background:C.rd,color:"#fff",fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:7}}>{p.badge}</span>}</button>})}</div>
+    <div style={{padding:"10px",borderTop:"1px solid "+C.b1,display:"flex",alignItems:"center",gap:7}}><Av name={p.user.name} size={28}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,color:C.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.user.name}</div><div style={{fontSize:8,color:C.t3,fontFamily:F}}>{p.user.email}</div></div><button onClick={p.onLogout} style={{background:"none",border:"none",color:C.t3,cursor:"pointer",fontSize:13}}>↩</button></div></div>}
+
+/* ═════ AUTH ═════════════════════════════════════════════════ */
+function AuthScreen(p){var _e=useState("");var em=_e[0],sE=_e[1];var _p=useState("");var pw=_p[0],sP=_p[1];var _er=useState("");var err=_er[0],sEr=_er[1];
+  function login(){sEr("");var u=p.users.find(function(x){return x.email===em});if(!u){sEr("Vartotojas nerastas. Kreipkitės į administratorių.");return}if(u.password!==pw){sEr("Neteisingas slaptažodis");return}p.onAuth(u)}
+  return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,padding:16}}><div style={{width:"100%",maxWidth:380,textAlign:"center"}}>
+    <div style={{width:52,height:52,borderRadius:12,background:"linear-gradient(135deg,"+C.ac+",#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px",boxShadow:"0 8px 28px "+C.ac+"33"}}>📐</div>
+    <h1 style={{fontSize:22,fontWeight:800,color:C.tx,marginBottom:2}}>Geopoint</h1><p style={{color:C.t2,fontSize:11,marginBottom:20}}>Geodezijos užsakymų valdymo sistema</p>
+    <div style={{background:C.s1,border:"1px solid "+C.b1,borderRadius:12,padding:20,textAlign:"left"}}><div style={{fontSize:12,fontWeight:700,color:C.t2,marginBottom:12,fontFamily:F}}>🔑 Prisijungimas</div>
+      <Inp label="El. paštas" type="email" value={em} onChange={sE} ph="vardas@imone.lt" req/><Inp label="Slaptažodis" type="password" value={pw} onChange={sP} ph="••••••••" req/>
+      {err&&<div style={{color:C.rd,fontSize:10,marginBottom:6,fontFamily:F}}>{err}</div>}
+      <Btn onClick={login} disabled={!em||!pw} style={{width:"100%",justifyContent:"center"}}>Prisijungti →</Btn>
+      <div style={{fontSize:10,color:C.t3,fontFamily:F,marginTop:10,textAlign:"center"}}>Neturite paskyros? Kreipkitės į administratorių.</div></div>
+    </div></div>}
+
+function PasswordChange(p){var _np=useState("");var np=_np[0],sNP=_np[1];var _np2=useState("");var np2=_np2[0],sNP2=_np2[1];var _er=useState("");var err=_er[0],sEr=_er[1];
+  function change(){sEr("");if(np.length<4){sEr("Min. 4 simboliai");return}if(np!==np2){sEr("Slaptažodžiai nesutampa");return}p.onChangePassword(np)}
+  return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,padding:16}}><div style={{width:"100%",maxWidth:380,textAlign:"center"}}>
+    <div style={{width:52,height:52,borderRadius:12,background:"linear-gradient(135deg,"+C.ac+",#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px"}}>🔑</div>
+    <h2 style={{fontSize:20,fontWeight:800,color:C.tx,marginBottom:4}}>Slaptažodžio keitimas</h2><p style={{color:C.t2,fontSize:11,marginBottom:20}}>Pirmą kartą prisijungiant privalote pasikeisti slaptažodį.</p>
+    <div style={{background:C.s1,border:"1px solid "+C.b1,borderRadius:12,padding:20,textAlign:"left"}}><Inp label="Naujas slaptažodis" type="password" value={np} onChange={sNP} ph="Min. 4 simboliai" req/><Inp label="Pakartokite slaptažodį" type="password" value={np2} onChange={sNP2} ph="Pakartokite" req/>{err&&<div style={{color:C.rd,fontSize:10,marginBottom:6,fontFamily:F}}>{err}</div>}<Btn onClick={change} disabled={!np||!np2} style={{width:"100%",justifyContent:"center"}}>Patvirtinti</Btn></div></div></div>}
+
+/* ═════ PASSWORD CHANGE PAGE (voluntary) ════════════════════ */
+function PasswordChangePage(p){var _op=useState("");var op=_op[0],sOP=_op[1];var _np=useState("");var np=_np[0],sNP=_np[1];var _np2=useState("");var np2=_np2[0],sNP2=_np2[1];var _er=useState("");var err=_er[0],sEr=_er[1];var _ok=useState(false);var ok=_ok[0],sOK=_ok[1];
+  function change(){sEr("");if(op!==p.user.password){sEr("Neteisingas dabartinis slaptažodis");return}if(np.length<4){sEr("Naujas slaptažodis per trumpas (min. 4)");return}if(np!==np2){sEr("Slaptažodžiai nesutampa");return}p.onChangePassword(np);sOK(true);sOP("");sNP("");sNP2("")}
+  return <div style={{maxWidth:400}}><h2 style={{fontSize:18,fontWeight:800,color:C.tx,fontFamily:F,marginBottom:12}}>🔑 Keisti slaptažodį</h2>
+    {ok&&<div style={{background:C.gnD,border:"1px solid "+C.gn+"33",borderRadius:8,padding:10,marginBottom:12}}><div style={{fontSize:12,color:C.gn,fontFamily:F,fontWeight:600}}>✅ Slaptažodis sėkmingai pakeistas!</div></div>}
+    <Inp label="Dabartinis slaptažodis" type="password" value={op} onChange={function(v){sOP(v);sOK(false)}} ph="Įveskite dabartinį" req/>
+    <Inp label="Naujas slaptažodis" type="password" value={np} onChange={sNP} ph="Min. 4 simboliai" req/>
+    <Inp label="Pakartokite naują slaptažodį" type="password" value={np2} onChange={sNP2} ph="Pakartokite" req/>
+    {err&&<div style={{color:C.rd,fontSize:10,marginBottom:6,fontFamily:F}}>{err}</div>}
+    <Btn onClick={change} disabled={!op||!np||!np2}>Pakeisti slaptažodį</Btn></div>}
+
+/* ══════════ MAIN APP ════════════════════════════════════════ */
+function App(){
+  var _u=useState(SEED_USERS);var users=_u[0],sUsers=_u[1];var _o=useState(SEED_ORDERS);var orders=_o[0],sOrders=_o[1];var _sc=useState(SEED_SCHED);var sched=_sc[0],sSched=_sc[1];var _n=useState([]);var notifs=_n[0],sNotifs=_n[1];var _me=useState(null);var user=_me[0],sUser=_me[1];var _v=useState("my");var view=_v[0],sView=_v[1];var _sel=useState(null);var selO=_sel[0],sSel=_sel[1];var _sn=useState(false);var showN=_sn[0],sSN=_sn[1];var _l=useState(false);var loaded=_l[0],sL=_l[1];var _ws=useState(getMonday(new Date()));var ws=_ws[0],sWS=_ws[1];
+  var _sf=useState("all");var stFilt=_sf[0],sSF=_sf[1];var _of=useState("all");var ordFilt=_of[0],sOF=_of[1];var _gf=useState("all");var geoFilt=_gf[0],sGF=_gf[1];
+  var _stab=useState("active");var sTab=_stab[0],sSTab=_stab[1];
+
+  useEffect(function(){(async function(){try{var u=await sGet("gp-users");var o=await sGet("gp-orders");var s=await sGet("gp-sched");var n=await sGet("gp-notifs");var sess=await sGet("gp-session");if(u&&u.length>0)sUsers(u);if(o&&o.length>0)sOrders(o);if(s&&s.length>0)sSched(s);if(n)sNotifs(n);if(sess){var f=(u||SEED_USERS).find(function(x){return x.id===sess.id});if(f){sUser(f);sView(f.role==="orderer"?"my":f.role==="admin"?"inbox":"assigned")}}}catch(e){}sL(true)})()},[]);
+  useEffect(function(){if(loaded)sSet("gp-orders",orders)},[orders,loaded]);
+  useEffect(function(){if(loaded)sSet("gp-users",users)},[users,loaded]);
+  useEffect(function(){if(loaded)sSet("gp-sched",sched)},[sched,loaded]);
+  useEffect(function(){if(loaded)sSet("gp-notifs",notifs)},[notifs,loaded]);
+
+  function doAuth(u){sUser(u);sView(u.role==="orderer"?"my":u.role==="admin"?"inbox":"assigned");sSet("gp-session",u)}
+  function logout(){sUser(null);sSet("gp-session",null)}
+  function changePassword(newPw){var updated=Object.assign({},user,{password:newPw,mustChangePassword:false});sUsers(function(p){return p.map(function(u){return u.id===updated.id?updated:u})});sUser(updated);sSet("gp-session",updated)}
+  function addN(to,msg,orderId){sNotifs(function(p){return[{id:uid(),to:to,message:msg,time:now(),read:false,orderId:orderId||null}].concat(p)})}
+
+  function addOrder(o){sOrders(function(p){return[o].concat(p)});users.filter(function(u){return u.role==="admin"}).forEach(function(a){addN(a.id,"Naujas užsakymas: "+(TL[o.type]||o.type)+" — "+o.address,o.id)});sView("my")}
+  function updateOrder(up){var old=orders.find(function(o){return o.id===up.id});sOrders(function(p){return p.map(function(o){return o.id===up.id?up:o})});
+    if(old&&old.status!==up.status){
+      if(up.status==="Patvirtintas")addN(up.createdBy,"✅ Užsakymas patvirtintas: "+up.address+". Data: "+up.dueDate,up.id);
+      if(up.status==="Priskirtas"&&up.assignedTo){addN(up.assignedTo,"📋 Nauja užduotis: "+(TL[up.type]||"")+" — "+up.address+" ("+up.dueDate+")",up.id);addN(up.createdBy,"Užsakymas priskirtas geodezininkui: "+up.address,up.id)}
+      if(up.status==="LaukiaPatvirtinimo")users.filter(function(u){return u.role==="admin"}).forEach(function(a){addN(a.id,"⏳ Laukia patvirtinimo: "+up.address,up.id)});
+      if(up.status==="Ivykdytas"){addN(up.createdBy,"✅ Užsakymas įvykdytas: "+up.address+". Pranešimas išsiųstas el. paštu: "+up.email,up.id);if(up.assignedTo)addN(up.assignedTo,"✅ Administratorius patvirtino įvykdymą: "+up.address,up.id);users.filter(function(u){return u.role==="admin"}).forEach(function(a){addN(a.id,"✅ Patvirtintas kaip įvykdytas: "+up.address,up.id)})}
+      if(up.status==="Atmestas")addN(up.createdBy,"❌ Atmestas: "+up.address,up.id);
+      if(["Pamatuota","Braizoma","Derinama","Priimtas"].indexOf(up.status)!==-1)addN(up.createdBy,"ℹ️ Būsena: "+(SL[up.status]||up.status)+" — "+up.address,up.id)}}
+  function deleteOrder(id){sOrders(function(p){return p.filter(function(o){return o.id!==id})})}
+  function resetPw(uid2,pw){sUsers(function(p){return p.map(function(u){return u.id===uid2?Object.assign({},u,{password:pw,mustChangePassword:true}):u})})}
+  function addUser(nu){sUsers(function(p){return p.concat([nu])})}
+  function deleteUser(id){sUsers(function(p){return p.filter(function(u){return u.id!==id})})}
+
+  // Navigate to order from notification
+  function goToOrder(orderId){if(!orderId)return;var o=orders.find(function(x){return x.id===orderId});if(o){sSel(o);sSN(false)}}
+
+  var surveyors=users.filter(function(u){return u.role==="surveyor"});
+  var newC=orders.filter(function(o){return o.status==="Naujas"||o.status==="LaukiaPatvirtinimo"}).length;
+  var unread=user?notifs.filter(function(n){return n.to===user.id&&!n.read}).length:0;
+
+  if(!loaded)return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,color:C.t2}}>Kraunama...</div>;
+  if(!user)return <AuthScreen onAuth={doAuth} users={users}/>;
+  if(user.mustChangePassword)return <PasswordChange onChangePassword={changePassword}/>;
+
+  var vo=orders;var title="";var desc="";var voUnfiltered=orders;
+  if(user.role==="orderer"){voUnfiltered=orders.filter(function(o){return o.createdBy===user.id});vo=voUnfiltered;title="Mano užsakymai";desc=voUnfiltered.length+" pateikti";
+    if(stFilt!=="all")vo=vo.filter(function(o){return o.status===stFilt})}
+  else if(user.role==="admin"){
+    if(view==="inbox"){vo=orders.filter(function(o){return o.status==="Naujas"||o.status==="LaukiaPatvirtinimo"});title="📥 Gauti užsakymai";desc=vo.length+" laukia tvirtinimo"}
+    else if(view==="all"){title="📦 Visi užsakymai";desc=orders.length+" sistemoje";vo=orders;
+      if(stFilt!=="all")vo=vo.filter(function(o){return o.status===stFilt});
+      if(ordFilt!=="all")vo=vo.filter(function(o){return o.createdBy===ordFilt});
+      if(geoFilt!=="all")vo=vo.filter(function(o){return o.assignedTo===geoFilt})}}
+  else if(user.role==="surveyor"){var myAll=orders.filter(function(o){return o.assignedTo===user.id});voUnfiltered=myAll;
+    if(sTab==="active")vo=myAll.filter(function(o){return["Priskirtas","Priimtas","Pamatuota","Braizoma","Derinama","LaukiaPatvirtinimo"].indexOf(o.status)!==-1});
+    else vo=myAll.filter(function(o){return o.status==="Ivykdytas"});voUnfiltered=vo;
+    if(stFilt!=="all")vo=vo.filter(function(o){return o.status===stFilt});
+    title="📋 Mano užduotys";desc=voUnfiltered.length+" užduotys"}
+
+  var orderers=users.filter(function(u){return u.role==="orderer"});
+
+  return <div style={{display:"flex",height:"100vh",fontFamily:F,background:C.bg,color:C.tx}}>
+    <style dangerouslySetInnerHTML={{__html:"@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:"+C.b1+";border-radius:3px}select option{background:"+C.s1+";color:"+C.tx+"}input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}"}}/>
+    <Sidebar user={user} view={view} setView={sView} onLogout={logout} badge={user.role==="admin"?newC:0}/>
+    <div style={{flex:1,overflow:"auto",padding:"18px 24px"}}>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+        <button onClick={function(){sSN(true)}} style={{position:"relative",background:"none",border:"none",color:C.t2,fontSize:16,cursor:"pointer",padding:3}}>🔔{unread>0&&<span style={{position:"absolute",top:0,right:0,width:13,height:13,borderRadius:"50%",background:C.rd,color:"#fff",fontSize:7,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{unread>9?"9+":unread}</span>}</button></div>
+
+      {view==="new"&&user.role==="orderer"?<OrderForm user={user} orders={orders} onSubmit={addOrder} onCancel={function(){sView("my")}}/>
+        :view==="schedule"?<div><h2 style={{fontSize:16,fontWeight:800,color:C.tx,fontFamily:F,marginBottom:12}}>📅 Darbų grafikas</h2>
+          <WeekSchedule orders={orders} schedule={sched} surveyors={surveyors} users={users} isAdmin={user.role==="admin"} weekStart={ws}
+            onPrev={function(){sWS(function(w){return addDays(w,-7)})}} onNext={function(){sWS(function(w){return addDays(w,7)})}}
+            onAddEntry={function(e){sSched(function(p){return p.concat([e])})}} onRemoveEntry={function(id){sSched(function(p){return p.filter(function(e){return e.id!==id})})}}
+            onClickOrder={function(o){sSel(o)}}/></div>
+        :view==="analytics"&&user.role==="admin"?<Analytics orders={orders} users={users} surveyors={surveyors}/>
+        :view==="users"&&user.role==="admin"?<UserMgmt users={users} onResetPw={resetPw} onAddUser={addUser} onDeleteUser={deleteUser}/>
+        :view==="pw"?<PasswordChangePage user={user} onChangePassword={changePassword}/>
+        :<div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:6}}>
+            <div><h1 style={{fontSize:18,fontWeight:800,marginBottom:1}}>{title}</h1><p style={{fontSize:10,color:C.t2}}>{desc}</p></div>
+            {user.role==="orderer"&&view==="my"&&<Btn onClick={function(){sView("new")}}>➕ Naujas užsakymas</Btn>}</div>
+
+          {user.role==="surveyor"&&view==="assigned"&&<div style={{display:"flex",gap:2,background:C.s2,borderRadius:8,padding:2,marginBottom:12}}>
+            {[{id:"active",l:"Aktyvios užduotys"},{id:"done",l:"Atliktos"}].map(function(t){return <button key={t.id} onClick={function(){sSTab(t.id)}} style={{flex:1,padding:"7px 12px",borderRadius:7,border:"none",background:sTab===t.id?C.s3:"transparent",color:sTab===t.id?C.tx:C.t3,fontFamily:F,fontSize:11,fontWeight:600,cursor:"pointer"}}>{t.l}</button>})}</div>}
+
+          {/* Filters for "all orders" */}
+          {user.role==="admin"&&view==="all"&&<div style={{marginBottom:12}}>
+            {/* Status filter */}
+            <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:C.t3,fontFamily:F,padding:"4px 6px"}}>Būsena:</span>
+              <button onClick={function(){sSF("all")}} style={{padding:"4px 10px",borderRadius:6,border:"none",fontSize:10,fontWeight:600,fontFamily:F,background:stFilt==="all"?C.acD:"transparent",color:stFilt==="all"?C.ac:C.t3,cursor:"pointer"}}>Visi</button>
+              {Object.keys(STATUS_MAP).map(function(s){var cnt=orders.filter(function(o){return o.status===s}).length;if(cnt===0)return null;return <button key={s} onClick={function(){sSF(s)}} style={{padding:"4px 10px",borderRadius:6,border:"none",fontSize:10,fontWeight:600,fontFamily:F,background:stFilt===s?STATUS_MAP[s].bg:"transparent",color:stFilt===s?STATUS_MAP[s].c:C.t3,cursor:"pointer"}}>{SL[s]} ({cnt})</button>})}</div>
+            {/* Orderer filter */}
+            <div style={{display:"flex",gap:3,marginBottom:6,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:C.t3,fontFamily:F,padding:"4px 6px"}}>Užsakovas:</span>
+              <button onClick={function(){sOF("all")}} style={{padding:"4px 10px",borderRadius:6,border:"none",fontSize:10,fontWeight:600,fontFamily:F,background:ordFilt==="all"?C.acD:"transparent",color:ordFilt==="all"?C.ac:C.t3,cursor:"pointer"}}>Visi</button>
+              {orderers.map(function(u){return <button key={u.id} onClick={function(){sOF(u.id)}} style={{padding:"4px 10px",borderRadius:6,border:"none",fontSize:10,fontWeight:600,fontFamily:F,background:ordFilt===u.id?C.acD:"transparent",color:ordFilt===u.id?C.ac:C.t3,cursor:"pointer"}}>{u.name}</button>})}</div>
+            {/* Surveyor filter */}
+            <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:C.t3,fontFamily:F,padding:"4px 6px"}}>Geodezininkas:</span>
+              <button onClick={function(){sGF("all")}} style={{padding:"4px 10px",borderRadius:6,border:"none",fontSize:10,fontWeight:600,fontFamily:F,background:geoFilt==="all"?C.acD:"transparent",color:geoFilt==="all"?C.ac:C.t3,cursor:"pointer"}}>Visi</button>
+              {surveyors.map(function(s){return <button key={s.id} onClick={function(){sGF(s.id)}} style={{padding:"4px 10px",borderRadius:6,border:"none",fontSize:10,fontWeight:600,fontFamily:F,background:geoFilt===s.id?C.acD:"transparent",color:geoFilt===s.id?C.ac:C.t3,cursor:"pointer"}}>{s.name.split(" ")[0]}</button>})}</div>
+          </div>}
+
+          {/* Status filter — all roles */}
+          {((user.role==="orderer"&&view==="my")||(user.role==="surveyor"&&view==="assigned"))&&<div style={{display:"flex",gap:3,marginBottom:10,flexWrap:"wrap"}}>
+            <span style={{fontSize:10,color:C.t3,fontFamily:F,padding:"4px 6px"}}>Filtras:</span>
+            <button onClick={function(){sSF("all")}} style={{padding:"4px 10px",borderRadius:6,border:"none",fontSize:10,fontWeight:600,fontFamily:F,background:stFilt==="all"?C.acD:"transparent",color:stFilt==="all"?C.ac:C.t3,cursor:"pointer"}}>Visi ({voUnfiltered.length})</button>
+            {Object.keys(STATUS_MAP).map(function(s){var cnt=voUnfiltered.filter(function(o){return o.status===s}).length;if(cnt===0)return null;return <button key={s} onClick={function(){sSF(s)}} style={{padding:"4px 10px",borderRadius:6,border:"none",fontSize:10,fontWeight:600,fontFamily:F,background:stFilt===s?STATUS_MAP[s].bg:"transparent",color:stFilt===s?STATUS_MAP[s].c:C.t3,cursor:"pointer"}}>{SL[s]} ({cnt})</button>})}
+          </div>}
+
+          <StatsRow orders={vo}/>
+          {vo.length===0?<Empty icon="📭" title="Nėra užsakymų"/>:vo.map(function(o){return <OrderRow key={o.id} order={o} onClick={function(){sSel(o)}} users={users} surveyors={surveyors}/>})}
+        </div>}
+    </div>
+
+    {selO&&<OrderDetail order={selO} onClose={function(){sSel(null)}} user={user} users={users} surveyors={surveyors} onUpdate={function(u){updateOrder(u);sSel(null)}} onDelete={function(id){deleteOrder(id);sSel(null)}}/>}
+
+    {/* Notifications with double-click to navigate */}
+    {showN&&<Modal open={true} onClose={function(){sSN(false)}} title="Pranešimai" w={460}>
+      {notifs.filter(function(n){return n.to===user.id}).length===0?<Empty icon="🔕" title="Nėra pranešimų"/>
+        :<div><div style={{fontSize:10,color:C.t3,fontFamily:F,marginBottom:8}}>💡 Paspauskite du kartus ant pranešimo, kad atsidarytų užsakymas.</div>
+          <div style={{display:"flex",flexDirection:"column",gap:3,maxHeight:380,overflow:"auto"}}>
+          {notifs.filter(function(n){return n.to===user.id}).sort(function(a,b){return b.time.localeCompare(a.time)}).map(function(n){
+            return <div key={n.id}
+              onClick={function(){sNotifs(function(p){return p.map(function(x){return x.id===n.id?Object.assign({},x,{read:true}):x})})}}
+              onDoubleClick={function(){goToOrder(n.orderId)}}
+              style={{padding:"8px 12px",borderRadius:8,background:n.read?C.bg:C.acD,border:"1px solid "+(n.read?C.b1:C.ac+"33"),cursor:"pointer",transition:"all .15s"}}>
+              <div style={{fontSize:11,color:C.tx,fontFamily:F}}>{n.message}</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:3}}>
+                <div style={{fontSize:8,color:C.t3,fontFamily:FM}}>{n.time}</div>
+                {n.orderId&&<div style={{fontSize:8,color:C.ac,fontFamily:F}}>↗ du kartai = atidaryti</div>}
+              </div></div>})}</div></div>}</Modal>}
+  </div>}
+
+ReactDOM.render(React.createElement(App), document.getElementById('root'));
+</script>
+</body>
+</html>
