@@ -1,7 +1,7 @@
 {
   "name": "geopoint",
   "version": "1.0.0",
-  "description": "Geopoint — Geodezijos užsakymų valdymo sistema",
+  "description": "Geopoint MAX — Geodezijos užsakymų valdymo sistema",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
