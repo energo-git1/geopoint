@@ -2,14 +2,16 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const ldap = require('ldapjs');
+const Database = require('better-sqlite3');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // On Azure Linux App Service, /home is persistent storage
 // Locally, use the project directory
-const DATA_DIR = process.env.WEBSITE_SITE_NAME ? '/home/data' : __dirname;
-const DATA_FILE = path.join(DATA_DIR, 'data.json');
+const DATA_DIR  = process.env.WEBSITE_SITE_NAME ? '/home/data' : __dirname;
+const DB_FILE   = path.join(DATA_DIR, 'geopoint.db');
+const JSON_FILE = path.join(DATA_DIR, 'data.json'); // legacy — migrated on first run
 
 // ── Active Directory config ───────────────────────────────────
 const LDAP_URL      = 'ldap://192.168.1.100:389';
@@ -21,38 +23,64 @@ const LDAP_SVC_PASS = process.env.LDAP_SVC_PASS || '';
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── Data helpers ─────────────────────────────────────────────
-function readData() {
+// ── Database setup ────────────────────────────────────────────
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const db = new Database(DB_FILE);
+db.pragma('journal_mode = WAL'); // better concurrent read performance
+
+// Single key-value table — keeps the same API surface as before
+db.exec(`
+  CREATE TABLE IF NOT EXISTS store (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )
+`);
+
+// Migrate existing data.json → SQLite (runs once)
+if (fs.existsSync(JSON_FILE)) {
   try {
-    if (fs.existsSync(DATA_FILE)) {
-      return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    }
+    const legacy = JSON.parse(fs.readFileSync(JSON_FILE, 'utf8'));
+    const insert = db.prepare('INSERT OR IGNORE INTO store (key, value) VALUES (?, ?)');
+    const migrate = db.transaction((obj) => {
+      for (const [k, v] of Object.entries(obj)) {
+        insert.run(k, JSON.stringify(v));
+      }
+    });
+    migrate(legacy);
+    fs.renameSync(JSON_FILE, JSON_FILE + '.migrated');
+    console.log('  ✅ data.json migrated to SQLite');
   } catch (e) {
-    console.error('Klaida skaitant duomenis:', e.message);
+    console.error('  ⚠️  Migration error:', e.message);
   }
-  return {};
 }
 
-function writeData(data) {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
-  } catch (e) {
-    console.error('Klaida rašant duomenis:', e.message);
+// ── Data helpers ─────────────────────────────────────────────
+const stmtGet    = db.prepare('SELECT value FROM store WHERE key = ?');
+const stmtSet    = db.prepare('INSERT OR REPLACE INTO store (key, value) VALUES (?, ?)');
+const stmtDelete = db.prepare('DELETE FROM store WHERE key = ?');
+
+function dbGet(key) {
+  const row = stmtGet.get(key);
+  return row ? JSON.parse(row.value) : null;
+}
+
+function dbSet(key, value) {
+  if (value === null || value === undefined) {
+    stmtDelete.run(key);
+  } else {
+    stmtSet.run(key, JSON.stringify(value));
   }
 }
 
 // ── API endpoints ────────────────────────────────────────────
 
 app.get('/api/store/:key', (req, res) => {
-  const data = readData();
-  const key = req.params.key;
-  res.json({ key, value: data.hasOwnProperty(key) ? data[key] : null });
+  res.json({ key: req.params.key, value: dbGet(req.params.key) });
 });
 
 app.put('/api/store/:key', (req, res) => {
-  const data = readData();
-  data[req.params.key] = req.body.value;
-  writeData(data);
+  dbSet(req.params.key, req.body.value);
   res.json({ ok: true });
 });
 
@@ -143,8 +171,7 @@ app.post('/api/auth/ldap', (req, res) => {
 
 // Create or update user after successful AD auth
 function finishLogin(res, username, email, displayName) {
-  const data = readData();
-  let users = data['gp-users'] || [];
+  let users = dbGet('gp-users') || [];
 
   let user = users.find((u) => u.username === username || u.email === email);
 
@@ -160,14 +187,11 @@ function finishLogin(res, username, email, displayName) {
       password: null,
       createdAt: new Date().toISOString(),
     };
-    users = users.concat([user]);
-    data['gp-users'] = users;
-    writeData(data);
+    dbSet('gp-users', users.concat([user]));
     console.log(`  👤 Naujas AD vartotojas: ${displayName} (${email})`);
   } else {
     user = Object.assign({}, user, { name: displayName, email: email });
-    data['gp-users'] = users.map((u) => (u.username === username ? user : u));
-    writeData(data);
+    dbSet('gp-users', users.map((u) => (u.username === username ? user : u)));
   }
 
   res.json({ user });
@@ -183,14 +207,5 @@ app.listen(PORT, () => {
   console.log(`\n  📐 Geopoint veikia: http://localhost:${PORT}\n`);
   console.log(`  🔐 AD autentikacija: ${LDAP_URL}\n`);
 
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    console.log('  📁 Sukurtas duomenų aplankas:', DATA_DIR);
-  }
-  if (!fs.existsSync(DATA_FILE)) {
-    writeData({});
-    console.log('  ✅ Sukurtas naujas duomenų failas:', DATA_FILE);
-  } else {
-    console.log('  📄 Duomenų failas:', DATA_FILE);
-  }
+  console.log(`  🗄️  Duomenų bazė: ${DB_FILE}`);
 });
