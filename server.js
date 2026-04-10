@@ -12,9 +12,10 @@ const DATA_DIR = process.env.WEBSITE_SITE_NAME ? '/home/data' : __dirname;
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
 
 // ── Active Directory config ───────────────────────────────────
-const LDAP_URL     = 'ldap://192.168.1.100:389';
-const LDAP_DOMAIN  = 'hata.local';
-const LDAP_BASE_DN = 'DC=hata,DC=local';
+const LDAP_URL        = 'ldap://192.168.1.100:389';
+const LDAP_BASE_DN    = 'DC=hata,DC=local';
+const LDAP_SVC_DN     = process.env.LDAP_SVC_DN   || 'CN=svc_jira,OU=Service Accounts,DC=hata,DC=local';
+const LDAP_SVC_PASS   = process.env.LDAP_SVC_PASS || '';
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
@@ -69,13 +70,7 @@ app.post('/api/auth/ldap', (req, res) => {
     return res.status(400).json({ error: 'Trūksta prisijungimo duomenų' });
   }
 
-  const userPrincipal = `${username}@${LDAP_DOMAIN}`;
-
-  const client = ldap.createClient({
-    url: LDAP_URL,
-    timeout: 5000,
-    connectTimeout: 5000,
-  });
+  const client = ldap.createClient({ url: LDAP_URL, timeout: 5000, connectTimeout: 5000 });
 
   let responded = false;
   function safeRespond(code, body) {
@@ -84,45 +79,55 @@ app.post('/api/auth/ldap', (req, res) => {
 
   client.on('error', (err) => {
     console.error('LDAP klaida:', err.message);
-    safeRespond(503, { error: 'Nepavyko prisijungti prie Active Directory. Bandykite vėliau.' });
+    safeRespond(503, { error: 'Nepavyko prisijungti prie Active Directory.' });
   });
 
-  // Step 1: Bind (authenticate) with user credentials
-  client.bind(userPrincipal, password, (bindErr) => {
-    if (bindErr) {
+  // Step 1: Bind with service account to search the directory
+  client.bind(LDAP_SVC_DN, LDAP_SVC_PASS, (svcErr) => {
+    if (svcErr) {
       client.destroy();
-      console.log('LDAP bind nepavyko:', bindErr.message);
-      return safeRespond(401, { error: 'Neteisingas vartotojo vardas arba slaptažodis' });
+      console.error('LDAP service account bind nepavyko:', svcErr.message);
+      return safeRespond(503, { error: 'AD konfigūracijos klaida. Kreipkitės į administratorių.' });
     }
 
-    // Step 2: Search for user attributes in AD
+    // Step 2: Find user's full DN by sAMAccountName
     const searchOpts = {
       filter: `(sAMAccountName=${username})`,
       scope: 'sub',
-      attributes: ['displayName', 'mail', 'sAMAccountName'],
+      attributes: ['dn', 'givenName', 'sn', 'mail', 'sAMAccountName'],
       timeLimit: 5,
     };
 
     client.search(LDAP_BASE_DN, searchOpts, (searchErr, result) => {
       if (searchErr) {
         client.destroy();
-        return finishLogin(res, username, userPrincipal, username);
+        return safeRespond(503, { error: 'AD paieškos klaida.' });
       }
 
-      let adEntry = null;
-      result.on('searchEntry', (entry) => { adEntry = entry.object; });
+      let userEntry = null;
+      result.on('searchEntry', (entry) => { userEntry = entry; });
+      result.on('error', () => { client.destroy(); safeRespond(503, { error: 'AD paieškos klaida.' }); });
       result.on('end', () => {
-        client.unbind();
-        finishLogin(
-          res,
-          username,
-          adEntry && adEntry.mail ? adEntry.mail : userPrincipal,
-          adEntry && adEntry.displayName ? adEntry.displayName : username
-        );
-      });
-      result.on('error', () => {
-        client.destroy();
-        finishLogin(res, username, userPrincipal, username);
+        if (!userEntry) {
+          client.destroy();
+          return safeRespond(401, { error: 'Vartotojas nerastas Active Directory.' });
+        }
+
+        const userDN  = userEntry.dn.toString();
+        const attrs   = userEntry.object;
+        const email   = attrs.mail || `${username}@hata.local`;
+        const name    = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
+
+        // Step 3: Re-bind with user's own DN + their password to verify credentials
+        client.bind(userDN, password, (userBindErr) => {
+          client.unbind();
+          if (userBindErr) {
+            console.log('Neteisingas slaptažodis:', username);
+            return safeRespond(401, { error: 'Neteisingas slaptažodis.' });
+          }
+          // Authentication successful
+          finishLogin(res, username, email, name);
+        });
       });
     });
   });
