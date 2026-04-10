@@ -86,7 +86,10 @@ app.put('/api/store/:key', (req, res) => {
 
 // ── AD / LDAP authentication ─────────────────────────────────
 app.post('/api/auth/ldap', (req, res) => {
-  const { username, password } = req.body;
+  // Strip domain suffix if user typed "user@domain" — we always build UPN ourselves
+  const rawUsername = (req.body.username || '').trim();
+  const username = rawUsername.replace(/@[^@]*$/, '');
+  const { password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Trūksta prisijungimo duomenų' });
   }
@@ -119,14 +122,14 @@ app.post('/api/auth/ldap', (req, res) => {
     console.log('[LDAP] Step 2: Fetching user details...');
     const svcClient = makeClient();
     svcClient.on('error', () => {
-      finishLogin(res, username, `${username}@hata.local`, username);
+      finishLogin(res, username, '', username);
     });
 
     svcClient.bind(LDAP_SVC_DN, LDAP_SVC_PASS, (svcErr) => {
       if (svcErr) {
         svcClient.destroy();
         console.log('[LDAP] Step 2 svc bind failed, using minimal info');
-        return finishLogin(res, username, `${username}@hata.local`, username);
+        return finishLogin(res, username, '', username);
       }
 
       const searchOpts = {
@@ -140,7 +143,7 @@ app.post('/api/auth/ldap', (req, res) => {
         if (searchErr) {
           svcClient.destroy();
           console.log('[LDAP] Step 2 search error:', searchErr.message);
-          return finishLogin(res, username, `${username}@hata.local`, username);
+          return finishLogin(res, username, '', username);
         }
 
         let attrs = {};
@@ -153,13 +156,13 @@ app.post('/api/auth/ldap', (req, res) => {
         result.on('searchReference', () => {});
         result.on('error', () => {
           svcClient.destroy();
-          const email = attrs.mail || `${username}@hata.local`;
+          const email = attrs.mail || '';
           const name  = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
           finishLogin(res, username, email, name);
         });
         result.on('end', () => {
           svcClient.unbind();
-          const email = attrs.mail || `${username}@hata.local`;
+          const email = attrs.mail || '';
           const name  = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
           console.log('[LDAP] Step 2 complete. Name:', name, '| Email:', email);
           finishLogin(res, username, email, name);

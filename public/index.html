@@ -316,7 +316,7 @@ function UserMgmt(p){
           <Av name={u.name} size={34}/>
           <div style={{flex:1}}>
             <div style={{fontSize:12,fontWeight:600,color:C.tx,fontFamily:F}}>{u.name} <span style={{fontSize:9,color:C.yl,fontFamily:FM}}>AD</span></div>
-            <div style={{fontSize:10,color:C.t3,fontFamily:F}}>{u.email}</div>
+            <div style={{fontSize:10,color:C.t3,fontFamily:F}}>{u.email||u.username}</div>
           </div>
           <Btn sm onClick={function(){sAR(u.id);sARole("")}}>Priskirti rolę →</Btn>
           <Btn v="danger" sm onClick={function(){sDel(u.id)}}>🗑️</Btn>
@@ -329,13 +329,13 @@ function UserMgmt(p){
       <Btn sm onClick={function(){sAdd(true)}}>➕ Sukurti vartotoją</Btn>
     </div>
     <div style={{display:"flex",flexDirection:"column",gap:4}}>{active.map(function(u){return <div key={u.id} style={{padding:"10px 14px",background:C.s2,borderRadius:8,border:"1px solid "+C.b1,display:"flex",alignItems:"center",gap:10}}>
-      <Av name={u.name} size={34}/><div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:C.tx,fontFamily:F}}>{u.name}{u.adAuth&&<span style={{fontSize:9,color:C.ac,marginLeft:6,fontFamily:FM}}>AD</span>}{u.mustChangePassword&&<span style={{fontSize:9,color:C.yl,marginLeft:6}}>⚠️ laukia slaptažodžio keitimo</span>}</div><div style={{fontSize:10,color:C.t3,fontFamily:F}}>{u.email} · {ROLES[u.role]||u.role}</div></div>
+      <Av name={u.name} size={34}/><div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:C.tx,fontFamily:F}}>{u.name}{u.adAuth&&<span style={{fontSize:9,color:C.ac,marginLeft:6,fontFamily:FM}}>AD</span>}{u.mustChangePassword&&<span style={{fontSize:9,color:C.yl,marginLeft:6}}>⚠️ laukia slaptažodžio keitimo</span>}</div><div style={{fontSize:10,color:C.t3,fontFamily:F}}>{u.email||u.username} · {ROLES[u.role]||u.role}</div></div>
       {u.role!=="admin"&&!u.adAuth&&<Btn v="ghost" sm onClick={function(){sS(u.id);sP("")}}>🔑</Btn>}
       {u.role!=="admin"&&<Btn v="danger" sm onClick={function(){sDel(u.id)}}>🗑️</Btn>}
     </div>})}</div>
     {/* Modals */}
     <Modal open={assignId!==null} onClose={function(){sAR(null)}} title="Priskirti rolę" w={360}>
-      <div style={{fontSize:11,color:C.t2,fontFamily:F,marginBottom:12}}>Vartotojas: <strong>{(p.users.find(function(u){return u.id===assignId})||{}).name}</strong></div>
+      <div style={{fontSize:11,color:C.t2,fontFamily:F,marginBottom:12}}>Vartotojas: <strong>{(p.users.find(function(u){return u.id===assignId})||{}).name}</strong>{(function(){var u=p.users.find(function(u){return u.id===assignId});return u&&u.username?<span style={{color:C.t3,fontFamily:FM}}> ({u.username})</span>:null})()}</div>
       <Sel label="Rolė" value={assignRole} onChange={sARole} req options={[{value:"orderer",label:"Užsakovas"},{value:"surveyor",label:"Geodezininkas"},{value:"admin",label:"Administratorius"}]} ph="Pasirinkite rolę..."/>
       <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sAR(null)}}>Atšaukti</Btn><Btn sm disabled={!assignRole} onClick={doAssign}>Patvirtinti</Btn></div>
     </Modal>
@@ -352,7 +352,7 @@ function Sidebar(p){
   return <div style={{width:230,background:C.s1,borderRight:"1px solid "+C.b1,display:"flex",flexDirection:"column",height:"100%",flexShrink:0}}>
     <div style={{padding:"16px 14px 12px",borderBottom:"1px solid "+C.b1}}><div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,"+C.ac+",#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>📐</div><div><div style={{display:"flex",alignItems:"baseline",gap:5}}><div style={{fontSize:13,fontWeight:800,color:C.tx,fontFamily:F}}>Geopoint</div><div style={{fontSize:8,fontWeight:600,color:C.t3,fontFamily:FM}}>v1.2.0</div></div><div style={{fontSize:9,color:C.t3,fontFamily:F}}>{ROLES[p.user.role]}</div></div></div></div>
     <div style={{padding:"6px 5px",flex:1}}>{nav.map(function(n){return <button key={n.id} onClick={function(){p.setView(n.id)}} style={{width:"100%",display:"flex",alignItems:"center",gap:7,padding:"7px 9px",borderRadius:7,border:"none",background:p.view===n.id?C.acD:"transparent",color:p.view===n.id?C.ac:C.t2,fontFamily:F,fontSize:12,fontWeight:p.view===n.id?600:500,cursor:"pointer",textAlign:"left",marginBottom:1}}><span style={{fontSize:13}}>{n.ic}</span>{n.l}{n.id==="inbox"&&p.badge>0&&<span style={{marginLeft:"auto",background:C.rd,color:"#fff",fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:7}}>{p.badge}</span>}{n.pendingKey&&p.pendingCount>0&&<span style={{marginLeft:"auto",background:C.yl,color:"#000",fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:7}}>{p.pendingCount}</span>}</button>})}</div>
-    <div style={{padding:"10px",borderTop:"1px solid "+C.b1,display:"flex",alignItems:"center",gap:7}}><Av name={p.user.name} size={28}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,color:C.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.user.name}</div><div style={{fontSize:8,color:C.t3,fontFamily:F}}>{p.user.email}</div></div>
+    <div style={{padding:"10px",borderTop:"1px solid "+C.b1,display:"flex",alignItems:"center",gap:7}}><Av name={p.user.name} size={28}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,color:C.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.user.name}</div><div style={{fontSize:8,color:C.t3,fontFamily:F}}>{p.user.email||p.user.username}</div></div>
     <button onClick={p.onToggleTheme} title={p.isDark?"Šviesi tema":"Tamsi tema"} style={{background:"none",border:"1px solid "+C.b1,borderRadius:6,color:C.t2,cursor:"pointer",fontSize:13,padding:"3px 5px",lineHeight:1}}>{p.isDark?"☀️":"🌙"}</button>
     <button onClick={p.onLogout} style={{background:"none",border:"none",color:C.t3,cursor:"pointer",fontSize:13}}>↩</button></div></div>}
 
@@ -406,7 +406,7 @@ function PendingScreen(p){
       <div style={{background:C.s1,border:"1px solid "+C.b1,borderRadius:12,padding:16,marginBottom:20}}>
         <div style={{fontSize:11,color:C.t3,fontFamily:FM,marginBottom:4}}>Prisijungęs kaip</div>
         <div style={{fontSize:13,fontWeight:700,color:C.tx}}>{p.user.name}</div>
-        <div style={{fontSize:11,color:C.t2}}>{p.user.email}</div>
+        <div style={{fontSize:11,color:C.t2}}>{p.user.email||p.user.username}</div>
       </div>
       <button onClick={p.onLogout} style={{background:"none",border:"1px solid "+C.b1,borderRadius:8,color:C.t2,padding:"8px 20px",cursor:"pointer",fontFamily:F,fontSize:12}}>↩ Atsijungti</button>
     </div>
