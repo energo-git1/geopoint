@@ -111,29 +111,31 @@ app.post('/api/auth/ldap', (req, res) => {
       let userEntry = null;
       result.on('searchEntry', (entry) => {
         console.log('[LDAP] Step 2: Found entry:', entry.dn.toString());
-        userEntry = entry;
+        // ldapjs v3 — build attribute map from entry.attributes array
+        const attrs = {};
+        (entry.attributes || []).forEach((a) => {
+          attrs[a.type] = a.values && a.values.length === 1 ? a.values[0] : a.values;
+        });
+        userEntry = { dn: entry.dn.toString(), attrs };
       });
       result.on('searchReference', (ref) => {
         console.log('[LDAP] Step 2: Ignoring referral:', ref.uris[0]);
       });
       result.on('error', (err) => {
-        console.error('[LDAP] Step 2 FAILED - result error:', err.message);
+        console.log('[LDAP] Step 2 result error (referral?):', err.message, '| userEntry found:', !!userEntry);
+        // Operations Error (code 1) is typically AD referral chasing — if we already
+        // found the user entry, proceed with authentication
+        if (userEntry) {
+          return proceedWithAuth();
+        }
         client.destroy();
         safeRespond(503, { error: 'AD paieškos klaida.' });
       });
-      result.on('end', (status) => {
-        console.log('[LDAP] Step 2 ended, status:', status.status, '| userEntry found:', !!userEntry);
-        if (!userEntry) {
-          client.destroy();
-          return safeRespond(401, { error: 'Vartotojas nerastas Active Directory.' });
-        }
-
-        const userDN  = userEntry.dn.toString();
-        const attrs   = userEntry.object;
-        const email   = attrs.mail || `${username}@hata.local`;
-        const name    = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
-
-        // Step 3: Re-bind with user's own DN + their password to verify credentials
+      function proceedWithAuth() {
+        const userDN = userEntry.dn;
+        const attrs  = userEntry.attrs;
+        const email  = attrs.mail || `${username}@hata.local`;
+        const name   = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
         console.log('[LDAP] Step 3: Binding as user DN:', userDN);
         client.bind(userDN, password, (userBindErr) => {
           client.unbind();
@@ -144,6 +146,15 @@ app.post('/api/auth/ldap', (req, res) => {
           console.log('[LDAP] Step 3 OK - user authenticated:', username);
           finishLogin(res, username, email, name);
         });
+      }
+
+      result.on('end', (status) => {
+        console.log('[LDAP] Step 2 ended, status:', status.status, '| userEntry found:', !!userEntry);
+        if (!userEntry) {
+          client.destroy();
+          return safeRespond(401, { error: 'Vartotojas nerastas Active Directory.' });
+        }
+        proceedWithAuth();
       });
     });
   });
