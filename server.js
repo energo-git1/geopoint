@@ -83,12 +83,14 @@ app.post('/api/auth/ldap', (req, res) => {
   });
 
   // Step 1: Bind with service account to search the directory
+  console.log('[LDAP] Step 1: Binding with service account...');
   client.bind(LDAP_SVC_DN, LDAP_SVC_PASS, (svcErr) => {
     if (svcErr) {
       client.destroy();
-      console.error('LDAP service account bind nepavyko:', svcErr.message);
+      console.error('[LDAP] Step 1 FAILED - service account bind:', svcErr.message);
       return safeRespond(503, { error: 'AD konfigūracijos klaida. Kreipkitės į administratorių.' });
     }
+    console.log('[LDAP] Step 1 OK - service account bound');
 
     // Step 2: Find user's full DN by sAMAccountName
     const searchOpts = {
@@ -97,18 +99,30 @@ app.post('/api/auth/ldap', (req, res) => {
       attributes: ['dn', 'givenName', 'sn', 'mail', 'sAMAccountName'],
       timeLimit: 5,
     };
+    console.log('[LDAP] Step 2: Searching for user:', username);
 
     client.search(LDAP_BASE_DN, searchOpts, (searchErr, result) => {
       if (searchErr) {
         client.destroy();
+        console.error('[LDAP] Step 2 FAILED - search error:', searchErr.message);
         return safeRespond(503, { error: 'AD paieškos klaida.' });
       }
 
       let userEntry = null;
-      result.on('searchEntry', (entry) => { userEntry = entry; });
-      result.on('searchReference', () => { /* ignore AD referrals */ });
-      result.on('error', () => { client.destroy(); safeRespond(503, { error: 'AD paieškos klaida.' }); });
-      result.on('end', () => {
+      result.on('searchEntry', (entry) => {
+        console.log('[LDAP] Step 2: Found entry:', entry.dn.toString());
+        userEntry = entry;
+      });
+      result.on('searchReference', (ref) => {
+        console.log('[LDAP] Step 2: Ignoring referral:', ref.uris[0]);
+      });
+      result.on('error', (err) => {
+        console.error('[LDAP] Step 2 FAILED - result error:', err.message);
+        client.destroy();
+        safeRespond(503, { error: 'AD paieškos klaida.' });
+      });
+      result.on('end', (status) => {
+        console.log('[LDAP] Step 2 ended, status:', status.status, '| userEntry found:', !!userEntry);
         if (!userEntry) {
           client.destroy();
           return safeRespond(401, { error: 'Vartotojas nerastas Active Directory.' });
@@ -120,13 +134,14 @@ app.post('/api/auth/ldap', (req, res) => {
         const name    = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
 
         // Step 3: Re-bind with user's own DN + their password to verify credentials
+        console.log('[LDAP] Step 3: Binding as user DN:', userDN);
         client.bind(userDN, password, (userBindErr) => {
           client.unbind();
           if (userBindErr) {
-            console.log('Neteisingas slaptažodis:', username);
+            console.error('[LDAP] Step 3 FAILED - user bind:', userBindErr.message);
             return safeRespond(401, { error: 'Neteisingas slaptažodis.' });
           }
-          // Authentication successful
+          console.log('[LDAP] Step 3 OK - user authenticated:', username);
           finishLogin(res, username, email, name);
         });
       });
