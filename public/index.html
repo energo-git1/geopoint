@@ -74,7 +74,7 @@ var TL={"Topografines nuotraukos matavimas":"Topografinės nuotraukos matavimas"
 var TS={"Topografines nuotraukos matavimas":"TOPO","Ispildomosios nuotraukos matavimas":"IŠPILD","Nuzymejimai":"NUŽYM","Suliniu korteliu parengimas":"ŠULIN","Zymu parengimas":"ŽYMŲ","SHP parengimas":"SHP"};
 var TC={TOPO:"#3B82F6","IŠPILD":"#F59E0B","NUŽYM":"#10B981","ŠULIN":"#8B5CF6","ŽYMŲ":"#F97316",SHP:"#EC4899"};
 var FIELD_TYPES=["Topografines nuotraukos matavimas","Ispildomosios nuotraukos matavimas","Nuzymejimai","Suliniu korteliu parengimas"];
-var ROLES={orderer:"Užsakovas",admin:"Administratorius",surveyor:"Geodezininkas"};
+var ROLES={orderer:"Užsakovas",admin:"Administratorius",surveyor:"Geodezininkas",pending:"Laukia patvirtinimo"};
 var WDAYS_S=["Pr","An","Tr","Kt","Pn","Št","Sk"];
 var MONTHS_LT=["Sausis","Vasaris","Kovas","Balandis","Gegužė","Birželis","Liepa","Rugpjūtis","Rugsėjis","Spalis","Lapkritis","Gruodis"];
 var CELL_COLORS={field:"#EAB308",draft:"#EF4444",holiday:"#7C3AED",dayoff:"#4B5563",sick:"#F97316"};
@@ -299,41 +299,117 @@ function UserMgmt(p){
   var _s=useState(null);var sel=_s[0],sS=_s[1];var _p=useState("");var pw=_p[0],sP=_p[1];var _add=useState(false);var showAdd=_add[0],sAdd=_add[1];
   var _nn=useState("");var nn=_nn[0],sNN=_nn[1];var _ne=useState("");var ne=_ne[0],sNE=_ne[1];var _np=useState("");var np=_np[0],sNP=_np[1];var _nr=useState("");var nr=_nr[0],sNR=_nr[1];
   var _del=useState(null);var delId=_del[0],sDel=_del[1];
+  var _ar=useState(null);var assignId=_ar[0],sAR=_ar[1];var _arole=useState("");var assignRole=_arole[0],sARole=_arole[1];
   function doAdd(){if(!nn||!ne||!np||!nr||np.length<4)return;p.onAddUser({id:uid(),name:nn,email:ne,password:np,role:nr,mustChangePassword:true});sAdd(false);sNN("");sNE("");sNP("");sNR("")}
-  return <div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><h2 style={{fontSize:16,fontWeight:800,color:C.tx,fontFamily:F}}>👥 Vartotojų valdymas</h2><Btn sm onClick={function(){sAdd(true)}}>➕ Sukurti vartotoją</Btn></div>
-    <div style={{display:"flex",flexDirection:"column",gap:4}}>{p.users.map(function(u){return <div key={u.id} style={{padding:"10px 14px",background:C.s2,borderRadius:8,border:"1px solid "+C.b1,display:"flex",alignItems:"center",gap:10}}>
-      <Av name={u.name} size={34}/><div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:C.tx,fontFamily:F}}>{u.name}{u.mustChangePassword&&<span style={{fontSize:9,color:C.yl,marginLeft:6}}>⚠️ laukia slaptažodžio keitimo</span>}</div><div style={{fontSize:10,color:C.t3,fontFamily:F}}>{u.email} · {ROLES[u.role]||u.role}</div></div>
-      {u.role!=="admin"&&<Btn v="ghost" sm onClick={function(){sS(u.id);sP("")}}>🔑</Btn>}
+  function doAssign(){if(!assignId||!assignRole)return;p.onAssignRole(assignId,assignRole);sAR(null);sARole("")}
+  var pending=p.users.filter(function(u){return u.role==="pending"});
+  var active=p.users.filter(function(u){return u.role!=="pending"});
+  return <div>
+    {/* Pending AD users */}
+    {pending.length>0&&<div style={{marginBottom:20}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <h2 style={{fontSize:14,fontWeight:800,color:C.tx,fontFamily:F}}>⏳ Laukia rolės priskyrimo</h2>
+        <span style={{background:C.rdD,color:C.rd,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:10}}>{pending.length}</span>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+        {pending.map(function(u){return <div key={u.id} style={{padding:"10px 14px",background:C.s2,borderRadius:8,border:"1.5px solid "+C.yl+"44",display:"flex",alignItems:"center",gap:10}}>
+          <Av name={u.name} size={34}/>
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.tx,fontFamily:F}}>{u.name} <span style={{fontSize:9,color:C.yl,fontFamily:FM}}>AD</span></div>
+            <div style={{fontSize:10,color:C.t3,fontFamily:F}}>{u.email}</div>
+          </div>
+          <Btn sm onClick={function(){sAR(u.id);sARole("")}}>Priskirti rolę →</Btn>
+          <Btn v="danger" sm onClick={function(){sDel(u.id)}}>🗑️</Btn>
+        </div>})}
+      </div>
+    </div>}
+    {/* Active users */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+      <h2 style={{fontSize:14,fontWeight:800,color:C.tx,fontFamily:F}}>👥 Aktyvūs vartotojai</h2>
+      <Btn sm onClick={function(){sAdd(true)}}>➕ Sukurti vartotoją</Btn>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:4}}>{active.map(function(u){return <div key={u.id} style={{padding:"10px 14px",background:C.s2,borderRadius:8,border:"1px solid "+C.b1,display:"flex",alignItems:"center",gap:10}}>
+      <Av name={u.name} size={34}/><div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:C.tx,fontFamily:F}}>{u.name}{u.adAuth&&<span style={{fontSize:9,color:C.ac,marginLeft:6,fontFamily:FM}}>AD</span>}{u.mustChangePassword&&<span style={{fontSize:9,color:C.yl,marginLeft:6}}>⚠️ laukia slaptažodžio keitimo</span>}</div><div style={{fontSize:10,color:C.t3,fontFamily:F}}>{u.email} · {ROLES[u.role]||u.role}</div></div>
+      {u.role!=="admin"&&!u.adAuth&&<Btn v="ghost" sm onClick={function(){sS(u.id);sP("")}}>🔑</Btn>}
       {u.role!=="admin"&&<Btn v="danger" sm onClick={function(){sDel(u.id)}}>🗑️</Btn>}
     </div>})}</div>
+    {/* Modals */}
+    <Modal open={assignId!==null} onClose={function(){sAR(null)}} title="Priskirti rolę" w={360}>
+      <div style={{fontSize:11,color:C.t2,fontFamily:F,marginBottom:12}}>Vartotojas: <strong>{(p.users.find(function(u){return u.id===assignId})||{}).name}</strong></div>
+      <Sel label="Rolė" value={assignRole} onChange={sARole} req options={[{value:"orderer",label:"Užsakovas"},{value:"surveyor",label:"Geodezininkas"},{value:"admin",label:"Administratorius"}]} ph="Pasirinkite rolę..."/>
+      <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sAR(null)}}>Atšaukti</Btn><Btn sm disabled={!assignRole} onClick={doAssign}>Patvirtinti</Btn></div>
+    </Modal>
     <Modal open={sel!==null} onClose={function(){sS(null)}} title="Keisti slaptažodį" w={360}><div style={{fontSize:11,color:C.t2,fontFamily:F,marginBottom:8}}>Vartotojas: {(p.users.find(function(u){return u.id===sel})||{}).name}</div><Inp label="Naujas slaptažodis" type="password" value={pw} onChange={sP} ph="Min. 4 simboliai" req/><div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sS(null)}}>Atšaukti</Btn><Btn sm disabled={pw.length<4} onClick={function(){p.onResetPw(sel,pw);sS(null)}}>Pakeisti</Btn></div></Modal>
     <Modal open={delId!==null} onClose={function(){sDel(null)}} title="Ištrinti vartotoją?" w={360}><div style={{fontSize:12,color:C.tx,fontFamily:F,marginBottom:12}}>Ar tikrai norite ištrinti vartotoją <strong>{(p.users.find(function(u){return u.id===delId})||{}).name}</strong>?</div><div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sDel(null)}}>Atšaukti</Btn><Btn v="danger" sm onClick={function(){p.onDeleteUser(delId);sDel(null)}}>Ištrinti</Btn></div></Modal>
-    <Modal open={showAdd} onClose={function(){sAdd(false)}} title="Sukurti naują vartotoją" w={420}><Inp label="Vardas Pavardė" value={nn} onChange={sNN} req ph="Jonas Jonaitis"/><Inp label="El. paštas" type="email" value={ne} onChange={sNE} req ph="vardas@imone.lt"/><Inp label="Pradinis slaptažodis" type="text" value={np} onChange={sNP} req ph="Min. 4 simboliai"/><Sel label="Rolė" value={nr} onChange={sNR} req options={[{value:"orderer",label:"Užsakovas"},{value:"surveyor",label:"Geodezininkas"}]} ph="Pasirinkite rolę..."/><div style={{fontSize:10,color:C.t3,fontFamily:F,marginBottom:8}}>ℹ️ Vartotojas privalės pasikeisti slaptažodį pirmo prisijungimo metu.</div><div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sAdd(false)}}>Atšaukti</Btn><Btn sm disabled={!nn||!ne||np.length<4||!nr} onClick={doAdd}>Sukurti</Btn></div></Modal></div>}
+    <Modal open={showAdd} onClose={function(){sAdd(false)}} title="Sukurti naują vartotoją" w={420}><Inp label="Vardas Pavardė" value={nn} onChange={sNN} req ph="Jonas Jonaitis"/><Inp label="El. paštas" type="email" value={ne} onChange={sNE} req ph="vardas@imone.lt"/><Inp label="Pradinis slaptažodis" type="text" value={np} onChange={sNP} req ph="Min. 4 simboliai"/><Sel label="Rolė" value={nr} onChange={sNR} req options={[{value:"orderer",label:"Užsakovas"},{value:"surveyor",label:"Geodezininkas"}]} ph="Pasirinkite rolę..."/><div style={{fontSize:10,color:C.t3,fontFamily:F,marginBottom:8}}>ℹ️ Vartotojas privalės pasikeisti slaptažodį pirmo prisijungimo metu.</div><div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sAdd(false)}}>Atšaukti</Btn><Btn sm disabled={!nn||!ne||np.length<4||!nr} onClick={doAdd}>Sukurti</Btn></div></Modal>
+  </div>}
 
 /* ═════ SIDEBAR ══════════════════════════════════════════════ */
 function Sidebar(p){
   var nav={orderer:[{id:"new",ic:"➕",l:"Naujas užsakymas"},{id:"my",ic:"📋",l:"Mano užsakymai"},{id:"schedule",ic:"📅",l:"Darbų grafikas"},{id:"pw",ic:"🔑",l:"Keisti slaptažodį"}],
-    admin:[{id:"inbox",ic:"📥",l:"Gauti užsakymai"},{id:"schedule",ic:"📅",l:"Darbų grafikas"},{id:"all",ic:"📦",l:"Visi užsakymai"},{id:"analytics",ic:"📊",l:"Analizė"},{id:"users",ic:"👥",l:"Vartotojai"},{id:"pw",ic:"🔑",l:"Keisti slaptažodį"}],
+    admin:[{id:"inbox",ic:"📥",l:"Gauti užsakymai"},{id:"schedule",ic:"📅",l:"Darbų grafikas"},{id:"all",ic:"📦",l:"Visi užsakymai"},{id:"analytics",ic:"📊",l:"Analizė"},{id:"users",ic:"👥",l:"Vartotojai",pendingKey:true},{id:"pw",ic:"🔑",l:"Keisti slaptažodį"}],
     surveyor:[{id:"assigned",ic:"📋",l:"Mano užduotys"},{id:"schedule",ic:"📅",l:"Darbų grafikas"},{id:"pw",ic:"🔑",l:"Keisti slaptažodį"}]}[p.user.role]||[];
   return <div style={{width:230,background:C.s1,borderRight:"1px solid "+C.b1,display:"flex",flexDirection:"column",height:"100%",flexShrink:0}}>
-    <div style={{padding:"16px 14px 12px",borderBottom:"1px solid "+C.b1}}><div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,"+C.ac+",#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>📐</div><div><div style={{display:"flex",alignItems:"baseline",gap:5}}><div style={{fontSize:13,fontWeight:800,color:C.tx,fontFamily:F}}>Geopoint</div><div style={{fontSize:8,fontWeight:600,color:C.t3,fontFamily:FM}}>v1.1.0</div></div><div style={{fontSize:9,color:C.t3,fontFamily:F}}>{ROLES[p.user.role]}</div></div></div></div>
-    <div style={{padding:"6px 5px",flex:1}}>{nav.map(function(n){return <button key={n.id} onClick={function(){p.setView(n.id)}} style={{width:"100%",display:"flex",alignItems:"center",gap:7,padding:"7px 9px",borderRadius:7,border:"none",background:p.view===n.id?C.acD:"transparent",color:p.view===n.id?C.ac:C.t2,fontFamily:F,fontSize:12,fontWeight:p.view===n.id?600:500,cursor:"pointer",textAlign:"left",marginBottom:1}}><span style={{fontSize:13}}>{n.ic}</span>{n.l}{n.id==="inbox"&&p.badge>0&&<span style={{marginLeft:"auto",background:C.rd,color:"#fff",fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:7}}>{p.badge}</span>}</button>})}</div>
+    <div style={{padding:"16px 14px 12px",borderBottom:"1px solid "+C.b1}}><div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,"+C.ac+",#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>📐</div><div><div style={{display:"flex",alignItems:"baseline",gap:5}}><div style={{fontSize:13,fontWeight:800,color:C.tx,fontFamily:F}}>Geopoint</div><div style={{fontSize:8,fontWeight:600,color:C.t3,fontFamily:FM}}>v1.2.0</div></div><div style={{fontSize:9,color:C.t3,fontFamily:F}}>{ROLES[p.user.role]}</div></div></div></div>
+    <div style={{padding:"6px 5px",flex:1}}>{nav.map(function(n){return <button key={n.id} onClick={function(){p.setView(n.id)}} style={{width:"100%",display:"flex",alignItems:"center",gap:7,padding:"7px 9px",borderRadius:7,border:"none",background:p.view===n.id?C.acD:"transparent",color:p.view===n.id?C.ac:C.t2,fontFamily:F,fontSize:12,fontWeight:p.view===n.id?600:500,cursor:"pointer",textAlign:"left",marginBottom:1}}><span style={{fontSize:13}}>{n.ic}</span>{n.l}{n.id==="inbox"&&p.badge>0&&<span style={{marginLeft:"auto",background:C.rd,color:"#fff",fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:7}}>{p.badge}</span>}{n.pendingKey&&p.pendingCount>0&&<span style={{marginLeft:"auto",background:C.yl,color:"#000",fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:7}}>{p.pendingCount}</span>}</button>})}</div>
     <div style={{padding:"10px",borderTop:"1px solid "+C.b1,display:"flex",alignItems:"center",gap:7}}><Av name={p.user.name} size={28}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,color:C.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.user.name}</div><div style={{fontSize:8,color:C.t3,fontFamily:F}}>{p.user.email}</div></div>
     <button onClick={p.onToggleTheme} title={p.isDark?"Šviesi tema":"Tamsi tema"} style={{background:"none",border:"1px solid "+C.b1,borderRadius:6,color:C.t2,cursor:"pointer",fontSize:13,padding:"3px 5px",lineHeight:1}}>{p.isDark?"☀️":"🌙"}</button>
     <button onClick={p.onLogout} style={{background:"none",border:"none",color:C.t3,cursor:"pointer",fontSize:13}}>↩</button></div></div>}
 
 /* ═════ AUTH ═════════════════════════════════════════════════ */
-function AuthScreen(p){var _e=useState("");var em=_e[0],sE=_e[1];var _p=useState("");var pw=_p[0],sP=_p[1];var _er=useState("");var err=_er[0],sEr=_er[1];
-  function login(){sEr("");var u=p.users.find(function(x){return x.email===em});if(!u){sEr("Vartotojas nerastas. Kreipkitės į administratorių.");return}if(u.password!==pw){sEr("Neteisingas slaptažodis");return}p.onAuth(u)}
-  return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,padding:16}}><div style={{width:"100%",maxWidth:380,textAlign:"center"}}>
-    <div style={{width:52,height:52,borderRadius:12,background:"linear-gradient(135deg,"+C.ac+",#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px",boxShadow:"0 8px 28px "+C.ac+"33"}}>📐</div>
-    <h1 style={{fontSize:22,fontWeight:800,color:C.tx,marginBottom:2}}>Geopoint MAX</h1><p style={{color:C.t2,fontSize:11,marginBottom:20}}>Geodezijos užsakymų valdymo sistema</p>
-    <div style={{background:C.s1,border:"1px solid "+C.b1,borderRadius:12,padding:20,textAlign:"left"}}><div style={{fontSize:12,fontWeight:700,color:C.t2,marginBottom:12,fontFamily:F}}>🔑 Prisijungimas</div>
-      <Inp label="El. paštas" type="email" value={em} onChange={sE} ph="vardas@imone.lt" req/><Inp label="Slaptažodis" type="password" value={pw} onChange={sP} ph="••••••••" req/>
-      {err&&<div style={{color:C.rd,fontSize:10,marginBottom:6,fontFamily:F}}>{err}</div>}
-      <Btn onClick={login} disabled={!em||!pw} style={{width:"100%",justifyContent:"center"}}>Prisijungti →</Btn>
-      <div style={{fontSize:10,color:C.t3,fontFamily:F,marginTop:10,textAlign:"center"}}>Neturite paskyros? Kreipkitės į administratorių.</div></div>
-    </div></div>}
+function AuthScreen(p){
+  var _tab=useState("ad");var tab=_tab[0],sTab=_tab[1];
+  var _e=useState("");var em=_e[0],sE=_e[1];var _p=useState("");var pw=_p[0],sP=_p[1];
+  var _un=useState("");var un=_un[0],sUN=_un[1];var _ap=useState("");var ap=_ap[0],sAP=_ap[1];
+  var _er=useState("");var err=_er[0],sEr=_er[1];var _ld=useState(false);var ld=_ld[0],sLd=_ld[1];
+  function loginLocal(){sEr("");var u=p.users.find(function(x){return x.email===em&&!x.adAuth});if(!u){sEr("Vartotojas nerastas.");return}if(u.password!==pw){sEr("Neteisingas slaptažodis");return}p.onAuth(u)}
+  async function loginAD(){sEr("");if(!un||!ap)return;sLd(true);try{var r=await fetch("/api/auth/ldap",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:un,password:ap})});var d=await r.json();if(!r.ok){sEr(d.error||"Prisijungimo klaida");sLd(false);return}p.onAuth(d.user,true)}catch(e){sEr("Serverio klaida. Bandykite vėliau.");sLd(false)}}
+  var tabSt=function(t){return{padding:"8px 20px",border:"none",borderBottom:tab===t?"2px solid "+C.ac:"2px solid transparent",background:"transparent",color:tab===t?C.ac:C.t2,fontFamily:F,fontSize:12,fontWeight:tab===t?700:500,cursor:"pointer"}};
+  return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,padding:16}}>
+    <div style={{width:"100%",maxWidth:380,textAlign:"center"}}>
+      <div style={{width:52,height:52,borderRadius:12,background:"linear-gradient(135deg,"+C.ac+",#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px",boxShadow:"0 8px 28px "+C.ac+"33"}}>📐</div>
+      <h1 style={{fontSize:22,fontWeight:800,color:C.tx,marginBottom:2}}>Geopoint</h1>
+      <p style={{color:C.t2,fontSize:11,marginBottom:20}}>Geodezijos užsakymų valdymo sistema</p>
+      <div style={{background:C.s1,border:"1px solid "+C.b1,borderRadius:12,overflow:"hidden",textAlign:"left"}}>
+        <div style={{display:"flex",borderBottom:"1px solid "+C.b1,background:C.s2}}>
+          <button style={tabSt("ad")} onClick={function(){sTab("ad");sEr("")}}>🏢 Active Directory</button>
+          <button style={tabSt("local")} onClick={function(){sTab("local");sEr("")}}>🔑 Vietinis</button>
+        </div>
+        <div style={{padding:20}}>
+          {tab==="ad"&&<div>
+            <div style={{fontSize:11,color:C.t2,marginBottom:14}}>Prisijunkite naudodami <b>hata.local</b> paskyrą.</div>
+            <Inp label="Vartotojo vardas" value={un} onChange={sUN} ph="vardas.pavardenis"/>
+            <Inp label="Slaptažodis" type="password" value={ap} onChange={sAP} ph="••••••••"/>
+            {err&&<div style={{color:C.rd,fontSize:10,marginBottom:8,fontFamily:F}}>⚠ {err}</div>}
+            <Btn onClick={loginAD} disabled={!un||!ap||ld} style={{width:"100%",justifyContent:"center"}}>{ld?"Jungiamasi...":"Prisijungti per AD →"}</Btn>
+          </div>}
+          {tab==="local"&&<div>
+            <div style={{fontSize:11,color:C.t2,marginBottom:14}}>Administratoriaus prisijungimas.</div>
+            <Inp label="El. paštas" type="email" value={em} onChange={sE} ph="vardas@imone.lt"/>
+            <Inp label="Slaptažodis" type="password" value={pw} onChange={sP} ph="••••••••"/>
+            {err&&<div style={{color:C.rd,fontSize:10,marginBottom:8,fontFamily:F}}>⚠ {err}</div>}
+            <Btn onClick={loginLocal} disabled={!em||!pw} style={{width:"100%",justifyContent:"center"}}>Prisijungti →</Btn>
+          </div>}
+        </div>
+      </div>
+    </div>
+  </div>}
+
+/* ═════ PENDING SCREEN ═══════════════════════════════════════ */
+function PendingScreen(p){
+  return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,padding:16}}>
+    <div style={{width:"100%",maxWidth:400,textAlign:"center"}}>
+      <div style={{fontSize:56,marginBottom:16}}>⏳</div>
+      <h2 style={{fontSize:20,fontWeight:800,color:C.tx,marginBottom:8}}>Laukiama patvirtinimo</h2>
+      <p style={{color:C.t2,fontSize:13,marginBottom:24,lineHeight:1.6}}>Jūsų paskyra sėkmingai sukurta.<br/>Administratorius turi priskirti jums rolę.</p>
+      <div style={{background:C.s1,border:"1px solid "+C.b1,borderRadius:12,padding:16,marginBottom:20}}>
+        <div style={{fontSize:11,color:C.t3,fontFamily:FM,marginBottom:4}}>Prisijungęs kaip</div>
+        <div style={{fontSize:13,fontWeight:700,color:C.tx}}>{p.user.name}</div>
+        <div style={{fontSize:11,color:C.t2}}>{p.user.email}</div>
+      </div>
+      <button onClick={p.onLogout} style={{background:"none",border:"1px solid "+C.b1,borderRadius:8,color:C.t2,padding:"8px 20px",cursor:"pointer",fontFamily:F,fontSize:12}}>↩ Atsijungti</button>
+    </div>
+  </div>}
 
 function PasswordChange(p){var _np=useState("");var np=_np[0],sNP=_np[1];var _np2=useState("");var np2=_np2[0],sNP2=_np2[1];var _er=useState("");var err=_er[0],sEr=_er[1];
   function change(){sEr("");if(np.length<4){sEr("Min. 4 simboliai");return}if(np!==np2){sEr("Slaptažodžiai nesutampa");return}p.onChangePassword(np)}
@@ -367,7 +443,12 @@ function App(){
   useEffect(function(){if(loaded)sSet("gp-sched",sched)},[sched,loaded]);
   useEffect(function(){if(loaded)sSet("gp-notifs",notifs)},[notifs,loaded]);
 
-  function doAuth(u){sUser(u);sView(u.role==="orderer"?"my":u.role==="admin"?"inbox":"assigned");sSet("gp-session",u)}
+  function doAuth(u,fromAD){
+    // If AD user, merge into local users list
+    if(fromAD){sUsers(function(prev){var exists=prev.find(function(x){return x.id===u.id||x.username===u.username});return exists?prev.map(function(x){return x.id===u.id?u:x}):prev.concat([u]})}
+    sUser(u);
+    if(u.role==="pending"){sView("pending");sSet("gp-session",u);return}
+    sView(u.role==="orderer"?"my":u.role==="admin"?"inbox":"assigned");sSet("gp-session",u)}
   function logout(){sUser(null);sSet("gp-session",null)}
   function changePassword(newPw){var updated=Object.assign({},user,{password:newPw,mustChangePassword:false});sUsers(function(p){return p.map(function(u){return u.id===updated.id?updated:u})});sUser(updated);sSet("gp-session",updated)}
   function addN(to,msg,orderId){sNotifs(function(p){return[{id:uid(),to:to,message:msg,time:now(),read:false,orderId:orderId||null}].concat(p)})}
@@ -385,6 +466,7 @@ function App(){
   function resetPw(uid2,pw){sUsers(function(p){return p.map(function(u){return u.id===uid2?Object.assign({},u,{password:pw,mustChangePassword:true}):u})})}
   function addUser(nu){sUsers(function(p){return p.concat([nu])})}
   function deleteUser(id){sUsers(function(p){return p.filter(function(u){return u.id!==id})})}
+  function assignRole(uid2,role){sUsers(function(p){return p.map(function(u){return u.id===uid2?Object.assign({},u,{role:role}):u})})}
 
   // Navigate to order from notification
   function goToOrder(orderId){if(!orderId)return;var o=orders.find(function(x){return x.id===orderId});if(o){sSel(o);sSN(false)}}
@@ -395,6 +477,7 @@ function App(){
 
   if(!loaded)return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,color:C.t2}}>Kraunama...</div>;
   if(!user)return <AuthScreen onAuth={doAuth} users={users}/>;
+  if(user.role==="pending")return <PendingScreen user={user} onLogout={logout}/>;
   if(user.mustChangePassword)return <PasswordChange onChangePassword={changePassword}/>;
 
   var vo=orders;var title="";var desc="";var voUnfiltered=orders;
@@ -416,7 +499,7 @@ function App(){
 
   return <div style={{display:"flex",height:"100vh",fontFamily:F,background:C.bg,color:C.tx}}>
     <style dangerouslySetInnerHTML={{__html:"@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:"+C.b1+";border-radius:3px}select option{background:"+C.s1+";color:"+C.tx+"}input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}"}}/>
-    <Sidebar user={user} view={view} setView={sView} onLogout={logout} badge={user.role==="admin"?newC:0} isDark={isDark} onToggleTheme={toggleTheme}/>
+    <Sidebar user={user} view={view} setView={sView} onLogout={logout} badge={user.role==="admin"?newC:0} isDark={isDark} onToggleTheme={toggleTheme} pendingCount={user.role==="admin"?users.filter(function(u){return u.role==="pending"}).length:0}/>
     <div style={{flex:1,overflow:"auto",padding:"18px 24px"}}>
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
         <button onClick={function(){sSN(true)}} style={{position:"relative",background:"none",border:"none",color:C.t2,fontSize:16,cursor:"pointer",padding:3}}>🔔{unread>0&&<span style={{position:"absolute",top:0,right:0,width:13,height:13,borderRadius:"50%",background:C.rd,color:"#fff",fontSize:7,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{unread>9?"9+":unread}</span>}</button></div>
@@ -428,7 +511,7 @@ function App(){
             onAddEntry={function(e){sSched(function(p){return p.concat([e])})}} onRemoveEntry={function(id){sSched(function(p){return p.filter(function(e){return e.id!==id})})}}
             onClickOrder={function(o){sSel(o)}}/></div>
         :view==="analytics"&&user.role==="admin"?<Analytics orders={orders} users={users} surveyors={surveyors}/>
-        :view==="users"&&user.role==="admin"?<UserMgmt users={users} onResetPw={resetPw} onAddUser={addUser} onDeleteUser={deleteUser}/>
+        :view==="users"&&user.role==="admin"?<UserMgmt users={users} onResetPw={resetPw} onAddUser={addUser} onDeleteUser={deleteUser} onAssignRole={assignRole}/>
         :view==="pw"?<PasswordChangePage user={user} onChangePassword={changePassword}/>
         :<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:6}}>

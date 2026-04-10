@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const ldap = require('ldapjs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,6 +10,11 @@ const PORT = process.env.PORT || 3000;
 // Locally, use the project directory
 const DATA_DIR = process.env.WEBSITE_SITE_NAME ? '/home/data' : __dirname;
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
+
+// ── Active Directory config ───────────────────────────────────
+const LDAP_URL     = 'ldap://192.168.1.100:389';
+const LDAP_DOMAIN  = 'hata.local';
+const LDAP_BASE_DN = 'DC=hata,DC=local';
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
@@ -56,6 +62,107 @@ app.put('/api/store/:key', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── AD / LDAP authentication ─────────────────────────────────
+app.post('/api/auth/ldap', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Trūksta prisijungimo duomenų' });
+  }
+
+  const userPrincipal = `${username}@${LDAP_DOMAIN}`;
+
+  const client = ldap.createClient({
+    url: LDAP_URL,
+    timeout: 5000,
+    connectTimeout: 5000,
+  });
+
+  let responded = false;
+  function safeRespond(code, body) {
+    if (!responded) { responded = true; res.status(code).json(body); }
+  }
+
+  client.on('error', (err) => {
+    console.error('LDAP klaida:', err.message);
+    safeRespond(503, { error: 'Nepavyko prisijungti prie Active Directory. Bandykite vėliau.' });
+  });
+
+  // Step 1: Bind (authenticate) with user credentials
+  client.bind(userPrincipal, password, (bindErr) => {
+    if (bindErr) {
+      client.destroy();
+      console.log('LDAP bind nepavyko:', bindErr.message);
+      return safeRespond(401, { error: 'Neteisingas vartotojo vardas arba slaptažodis' });
+    }
+
+    // Step 2: Search for user attributes in AD
+    const searchOpts = {
+      filter: `(sAMAccountName=${username})`,
+      scope: 'sub',
+      attributes: ['displayName', 'mail', 'sAMAccountName'],
+      timeLimit: 5,
+    };
+
+    client.search(LDAP_BASE_DN, searchOpts, (searchErr, result) => {
+      if (searchErr) {
+        client.destroy();
+        return finishLogin(res, username, userPrincipal, username);
+      }
+
+      let adEntry = null;
+      result.on('searchEntry', (entry) => { adEntry = entry.object; });
+      result.on('end', () => {
+        client.unbind();
+        finishLogin(
+          res,
+          username,
+          adEntry && adEntry.mail ? adEntry.mail : userPrincipal,
+          adEntry && adEntry.displayName ? adEntry.displayName : username
+        );
+      });
+      result.on('error', () => {
+        client.destroy();
+        finishLogin(res, username, userPrincipal, username);
+      });
+    });
+  });
+});
+
+// Create or fetch user after successful AD auth
+function finishLogin(res, username, email, displayName) {
+  const data = readData();
+  let users = data['gp-users'] || [];
+
+  // Find existing user by AD username or email
+  let user = users.find((u) => u.username === username || u.email === email);
+
+  if (!user) {
+    // New user — create with pending role, admin must assign
+    user = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      name: displayName,
+      email: email,
+      username: username,
+      role: 'pending',
+      adAuth: true,
+      mustChangePassword: false,
+      password: null,
+      createdAt: new Date().toISOString(),
+    };
+    users = users.concat([user]);
+    data['gp-users'] = users;
+    writeData(data);
+    console.log(`  👤 Naujas AD vartotojas: ${displayName} (${email})`);
+  } else {
+    // Update name/email from AD in case they changed
+    user = Object.assign({}, user, { name: displayName, email: email });
+    data['gp-users'] = users.map((u) => (u.username === username ? user : u));
+    writeData(data);
+  }
+
+  res.json({ user });
+}
+
 // Fallback — serve index.html for any non-API route
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -64,6 +171,7 @@ app.get('*', (req, res) => {
 // ── Start server ─────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n  📐 Geopoint veikia: http://localhost:${PORT}\n`);
+  console.log(`  🔐 AD autentikacija: ${LDAP_URL} (${LDAP_DOMAIN})\n`);
 
   // Ensure data directory exists
   if (!fs.existsSync(DATA_DIR)) {
