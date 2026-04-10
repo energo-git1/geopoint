@@ -12,10 +12,10 @@ const DATA_DIR = process.env.WEBSITE_SITE_NAME ? '/home/data' : __dirname;
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
 
 // ── Active Directory config ───────────────────────────────────
-const LDAP_URL        = 'ldap://192.168.1.100:389';
-const LDAP_BASE_DN    = 'DC=hata,DC=local';
-const LDAP_SVC_DN     = process.env.LDAP_SVC_DN   || 'CN=svc_jira,OU=Service Accounts,DC=hata,DC=local';
-const LDAP_SVC_PASS   = process.env.LDAP_SVC_PASS || '';
+const LDAP_URL      = 'ldap://192.168.1.100:389';
+const LDAP_BASE_DN  = 'DC=hata,DC=local';
+const LDAP_SVC_DN   = process.env.LDAP_SVC_DN   || 'CN=svc_jira,OU=Service Accounts,DC=hata,DC=local';
+const LDAP_SVC_PASS = process.env.LDAP_SVC_PASS || '';
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
@@ -43,22 +43,15 @@ function writeData(data) {
 
 // ── API endpoints ────────────────────────────────────────────
 
-// Get a value by key
 app.get('/api/store/:key', (req, res) => {
   const data = readData();
   const key = req.params.key;
-  if (data.hasOwnProperty(key)) {
-    res.json({ key, value: data[key] });
-  } else {
-    res.json({ key, value: null });
-  }
+  res.json({ key, value: data.hasOwnProperty(key) ? data[key] : null });
 });
 
-// Set a value by key
 app.put('/api/store/:key', (req, res) => {
   const data = readData();
-  const key = req.params.key;
-  data[key] = req.body.value;
+  data[req.params.key] = req.body.value;
   writeData(data);
   res.json({ ok: true });
 });
@@ -70,108 +63,92 @@ app.post('/api/auth/ldap', (req, res) => {
     return res.status(400).json({ error: 'Trūksta prisijungimo duomenų' });
   }
 
-  const client = ldap.createClient({ url: LDAP_URL, timeout: 5000, connectTimeout: 5000, reconnect: false });
-
   let responded = false;
   function safeRespond(code, body) {
     if (!responded) { responded = true; res.status(code).json(body); }
   }
+  function makeClient() {
+    return ldap.createClient({ url: LDAP_URL, timeout: 5000, connectTimeout: 5000, reconnect: false });
+  }
 
-  client.on('error', (err) => {
-    console.error('LDAP klaida:', err.message);
+  // Step 1: Verify password by binding directly with UPN (username@hata.local)
+  console.log('[LDAP] Step 1: Verifying credentials for:', username);
+  const authClient = makeClient();
+  authClient.on('error', (err) => {
+    console.error('[LDAP] Step 1 connection error:', err.message);
     safeRespond(503, { error: 'Nepavyko prisijungti prie Active Directory.' });
   });
 
-  // Step 1: Bind with service account to search the directory
-  console.log('[LDAP] Step 1: Binding with service account...');
-  client.bind(LDAP_SVC_DN, LDAP_SVC_PASS, (svcErr) => {
-    if (svcErr) {
-      client.destroy();
-      console.error('[LDAP] Step 1 FAILED - service account bind:', svcErr.message);
-      return safeRespond(503, { error: 'AD konfigūracijos klaida. Kreipkitės į administratorių.' });
+  authClient.bind(`${username}@hata.local`, password, (bindErr) => {
+    authClient.destroy();
+    if (bindErr) {
+      console.log('[LDAP] Step 1 FAILED:', bindErr.message);
+      return safeRespond(401, { error: 'Neteisingas vartotojo vardas arba slaptažodis.' });
     }
-    console.log('[LDAP] Step 1 OK - service account bound');
+    console.log('[LDAP] Step 1 OK - credentials verified');
 
-    // Step 2: Find user's full DN by sAMAccountName
-    const searchOpts = {
-      filter: `(sAMAccountName=${username})`,
-      scope: 'sub',
-      attributes: ['dn', 'givenName', 'sn', 'mail', 'sAMAccountName'],
-      timeLimit: 5,
-    };
-    // LDAP_SERVER_DOMAIN_SCOPE_OID — prevents AD from generating cross-domain referrals
-    const noReferralControl = new ldap.Control({ type: '1.2.840.113556.1.4.1339', criticality: false });
-    console.log('[LDAP] Step 2: Searching for user:', username);
+    // Step 2: Fetch display name and email via service account
+    console.log('[LDAP] Step 2: Fetching user details...');
+    const svcClient = makeClient();
+    svcClient.on('error', () => {
+      finishLogin(res, username, `${username}@hata.local`, username);
+    });
 
-    client.search(LDAP_BASE_DN, searchOpts, [noReferralControl], (searchErr, result) => {
-      if (searchErr) {
-        client.destroy();
-        console.error('[LDAP] Step 2 FAILED - search error:', searchErr.message);
-        return safeRespond(503, { error: 'AD paieškos klaida.' });
+    svcClient.bind(LDAP_SVC_DN, LDAP_SVC_PASS, (svcErr) => {
+      if (svcErr) {
+        svcClient.destroy();
+        console.log('[LDAP] Step 2 svc bind failed, using minimal info');
+        return finishLogin(res, username, `${username}@hata.local`, username);
       }
 
-      let userEntry = null;
-      result.on('searchEntry', (entry) => {
-        console.log('[LDAP] Step 2: Found entry:', entry.dn.toString());
-        // ldapjs v3 — build attribute map from entry.attributes array
-        const attrs = {};
-        (entry.attributes || []).forEach((a) => {
-          attrs[a.type] = a.values && a.values.length === 1 ? a.values[0] : a.values;
-        });
-        userEntry = { dn: entry.dn.toString(), attrs };
-      });
-      result.on('searchReference', (ref) => {
-        console.log('[LDAP] Step 2: Ignoring referral:', ref.uris[0]);
-      });
-      result.on('error', (err) => {
-        console.log('[LDAP] Step 2 result error (referral?):', err.message, '| userEntry found:', !!userEntry);
-        // Operations Error (code 1) is typically AD referral chasing — if we already
-        // found the user entry, proceed with authentication
-        if (userEntry) {
-          return proceedWithAuth();
+      const searchOpts = {
+        filter: `(&(objectCategory=Person)(sAMAccountName=${username}))`,
+        scope: 'sub',
+        attributes: ['givenName', 'sn', 'mail'],
+        timeLimit: 5,
+      };
+
+      svcClient.search(LDAP_BASE_DN, searchOpts, (searchErr, result) => {
+        if (searchErr) {
+          svcClient.destroy();
+          console.log('[LDAP] Step 2 search error:', searchErr.message);
+          return finishLogin(res, username, `${username}@hata.local`, username);
         }
-        client.destroy();
-        safeRespond(503, { error: 'AD paieškos klaida.' });
-      });
-      function proceedWithAuth() {
-        const userDN = userEntry.dn;
-        const attrs  = userEntry.attrs;
-        const email  = attrs.mail || `${username}@hata.local`;
-        const name   = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
-        console.log('[LDAP] Step 3: Binding as user DN:', userDN);
-        client.bind(userDN, password, (userBindErr) => {
-          client.unbind();
-          if (userBindErr) {
-            console.error('[LDAP] Step 3 FAILED - user bind:', userBindErr.message);
-            return safeRespond(401, { error: 'Neteisingas slaptažodis.' });
-          }
-          console.log('[LDAP] Step 3 OK - user authenticated:', username);
+
+        let attrs = {};
+        result.on('searchEntry', (entry) => {
+          (entry.attributes || []).forEach((a) => {
+            attrs[a.type] = a.values && a.values.length === 1 ? a.values[0] : a.values;
+          });
+          console.log('[LDAP] Step 2 attrs:', JSON.stringify(attrs));
+        });
+        result.on('searchReference', () => {});
+        result.on('error', () => {
+          svcClient.destroy();
+          const email = attrs.mail || `${username}@hata.local`;
+          const name  = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
           finishLogin(res, username, email, name);
         });
-      }
-
-      result.on('end', (status) => {
-        console.log('[LDAP] Step 2 ended, status:', status.status, '| userEntry found:', !!userEntry);
-        if (!userEntry) {
-          client.destroy();
-          return safeRespond(401, { error: 'Vartotojas nerastas Active Directory.' });
-        }
-        proceedWithAuth();
+        result.on('end', () => {
+          svcClient.unbind();
+          const email = attrs.mail || `${username}@hata.local`;
+          const name  = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
+          console.log('[LDAP] Step 2 complete. Name:', name, '| Email:', email);
+          finishLogin(res, username, email, name);
+        });
       });
     });
   });
 });
 
-// Create or fetch user after successful AD auth
+// Create or update user after successful AD auth
 function finishLogin(res, username, email, displayName) {
   const data = readData();
   let users = data['gp-users'] || [];
 
-  // Find existing user by AD username or email
   let user = users.find((u) => u.username === username || u.email === email);
 
   if (!user) {
-    // New user — create with pending role, admin must assign
     user = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
       name: displayName,
@@ -188,7 +165,6 @@ function finishLogin(res, username, email, displayName) {
     writeData(data);
     console.log(`  👤 Naujas AD vartotojas: ${displayName} (${email})`);
   } else {
-    // Update name/email from AD in case they changed
     user = Object.assign({}, user, { name: displayName, email: email });
     data['gp-users'] = users.map((u) => (u.username === username ? user : u));
     writeData(data);
@@ -207,13 +183,10 @@ app.listen(PORT, () => {
   console.log(`\n  📐 Geopoint veikia: http://localhost:${PORT}\n`);
   console.log(`  🔐 AD autentikacija: ${LDAP_URL}\n`);
 
-  // Ensure data directory exists
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     console.log('  📁 Sukurtas duomenų aplankas:', DATA_DIR);
   }
-
-  // Initialize data file if it doesn't exist
   if (!fs.existsSync(DATA_FILE)) {
     writeData({});
     console.log('  ✅ Sukurtas naujas duomenų failas:', DATA_FILE);
