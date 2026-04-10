@@ -13,12 +13,16 @@
 <script src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0B0D13;overflow:hidden}
-::-webkit-scrollbar{width:5px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:#242A3A;border-radius:3px}
-select option{background:#11141C;color:#E4E7F0}
-input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}
+body{overflow:hidden}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{border-radius:3px}
+body[data-theme="dark"]{background:#0B0D13}
+body[data-theme="dark"] ::-webkit-scrollbar-thumb{background:#242A3A}
+body[data-theme="dark"] select option{background:#11141C;color:#E4E7F0}
+body[data-theme="dark"] input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}
+body[data-theme="light"]{background:#F0F2F7}
+body[data-theme="light"] ::-webkit-scrollbar-thumb{background:#C5CCDB}
+body[data-theme="light"] select option{background:#FFFFFF;color:#111827}
 </style>
 </head>
 <body>
@@ -30,7 +34,7 @@ var {BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, C
 
 var F = "'Outfit', system-ui, sans-serif";
 var FM = "'IBM Plex Mono', monospace";
-var C = {
+var DARK_C = {
   bg:"#0B0D13",s1:"#11141C",s2:"#171B26",s3:"#1D2233",
   b1:"#242A3A",b2:"#303850",tx:"#E4E7F0",t2:"#8E95AB",t3:"#5A6178",
   ac:"#3B82F6",acH:"#60A5FA",acD:"rgba(59,130,246,.12)",
@@ -38,6 +42,18 @@ var C = {
   yl:"#EAB308",ylD:"rgba(234,179,8,.12)",vl:"#8B5CF6",vlD:"rgba(139,92,246,.12)",
   or:"#F97316",orD:"rgba(249,115,22,.12)",pk:"#EC4899",
 };
+var LIGHT_C = {
+  bg:"#F0F2F7",s1:"#FFFFFF",s2:"#F5F7FB",s3:"#EBEEF5",
+  b1:"#D4D9E8",b2:"#BEC6D8",tx:"#111827",t2:"#4B5563",t3:"#9CA3AF",
+  ac:"#3B82F6",acH:"#2563EB",acD:"rgba(59,130,246,.10)",
+  gn:"#10B981",gnD:"rgba(16,185,129,.10)",rd:"#EF4444",rdD:"rgba(239,68,68,.10)",
+  yl:"#CA8A04",ylD:"rgba(202,138,4,.10)",vl:"#7C3AED",vlD:"rgba(124,58,237,.10)",
+  or:"#EA6C00",orD:"rgba(234,108,0,.10)",pk:"#DB2777",
+};
+var _savedTheme = (function(){try{return localStorage.getItem('gp-theme')||'dark'}catch(e){return 'dark'}})();
+var C = Object.assign({}, _savedTheme==='light' ? LIGHT_C : DARK_C);
+document.documentElement.setAttribute('data-theme', _savedTheme);
+document.body.setAttribute('data-theme', _savedTheme);
 
 var STATUS_MAP = {
   Naujas:{bg:C.acD,c:C.ac,dot:C.ac},
@@ -302,7 +318,9 @@ function Sidebar(p){
   return <div style={{width:230,background:C.s1,borderRight:"1px solid "+C.b1,display:"flex",flexDirection:"column",height:"100%",flexShrink:0}}>
     <div style={{padding:"16px 14px 12px",borderBottom:"1px solid "+C.b1}}><div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,"+C.ac+",#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>📐</div><div><div style={{fontSize:13,fontWeight:800,color:C.tx,fontFamily:F}}>Geopoint</div><div style={{fontSize:9,color:C.t3,fontFamily:F}}>{ROLES[p.user.role]}</div></div></div></div>
     <div style={{padding:"6px 5px",flex:1}}>{nav.map(function(n){return <button key={n.id} onClick={function(){p.setView(n.id)}} style={{width:"100%",display:"flex",alignItems:"center",gap:7,padding:"7px 9px",borderRadius:7,border:"none",background:p.view===n.id?C.acD:"transparent",color:p.view===n.id?C.ac:C.t2,fontFamily:F,fontSize:12,fontWeight:p.view===n.id?600:500,cursor:"pointer",textAlign:"left",marginBottom:1}}><span style={{fontSize:13}}>{n.ic}</span>{n.l}{n.id==="inbox"&&p.badge>0&&<span style={{marginLeft:"auto",background:C.rd,color:"#fff",fontSize:8,fontWeight:800,padding:"1px 4px",borderRadius:7}}>{p.badge}</span>}</button>})}</div>
-    <div style={{padding:"10px",borderTop:"1px solid "+C.b1,display:"flex",alignItems:"center",gap:7}}><Av name={p.user.name} size={28}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,color:C.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.user.name}</div><div style={{fontSize:8,color:C.t3,fontFamily:F}}>{p.user.email}</div></div><button onClick={p.onLogout} style={{background:"none",border:"none",color:C.t3,cursor:"pointer",fontSize:13}}>↩</button></div></div>}
+    <div style={{padding:"10px",borderTop:"1px solid "+C.b1,display:"flex",alignItems:"center",gap:7}}><Av name={p.user.name} size={28}/><div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,color:C.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.user.name}</div><div style={{fontSize:8,color:C.t3,fontFamily:F}}>{p.user.email}</div></div>
+    <button onClick={p.onToggleTheme} title={p.isDark?"Šviesi tema":"Tamsi tema"} style={{background:"none",border:"1px solid "+C.b1,borderRadius:6,color:C.t2,cursor:"pointer",fontSize:13,padding:"3px 5px",lineHeight:1}}>{p.isDark?"☀️":"🌙"}</button>
+    <button onClick={p.onLogout} style={{background:"none",border:"none",color:C.t3,cursor:"pointer",fontSize:13}}>↩</button></div></div>}
 
 /* ═════ AUTH ═════════════════════════════════════════════════ */
 function AuthScreen(p){var _e=useState("");var em=_e[0],sE=_e[1];var _p=useState("");var pw=_p[0],sP=_p[1];var _er=useState("");var err=_er[0],sEr=_er[1];
@@ -338,6 +356,8 @@ function PasswordChangePage(p){var _op=useState("");var op=_op[0],sOP=_op[1];var
 /* ══════════ MAIN APP ════════════════════════════════════════ */
 function App(){
   var _u=useState(SEED_USERS);var users=_u[0],sUsers=_u[1];var _o=useState(SEED_ORDERS);var orders=_o[0],sOrders=_o[1];var _sc=useState(SEED_SCHED);var sched=_sc[0],sSched=_sc[1];var _n=useState([]);var notifs=_n[0],sNotifs=_n[1];var _me=useState(null);var user=_me[0],sUser=_me[1];var _v=useState("my");var view=_v[0],sView=_v[1];var _sel=useState(null);var selO=_sel[0],sSel=_sel[1];var _sn=useState(false);var showN=_sn[0],sSN=_sn[1];var _l=useState(false);var loaded=_l[0],sL=_l[1];var _ws=useState(getMonday(new Date()));var ws=_ws[0],sWS=_ws[1];
+  var _th=useState(_savedTheme==='dark');var isDark=_th[0],setIsDark=_th[1];
+  function toggleTheme(){setIsDark(function(d){var next=!d;var nc=next?DARK_C:LIGHT_C;Object.keys(nc).forEach(function(k){C[k]=nc[k]});document.body.setAttribute('data-theme',next?'dark':'light');try{localStorage.setItem('gp-theme',next?'dark':'light')}catch(e){}return next})};
   var _sf=useState("all");var stFilt=_sf[0],sSF=_sf[1];var _of=useState("all");var ordFilt=_of[0],sOF=_of[1];var _gf=useState("all");var geoFilt=_gf[0],sGF=_gf[1];
   var _stab=useState("active");var sTab=_stab[0],sSTab=_stab[1];
 
@@ -396,7 +416,7 @@ function App(){
 
   return <div style={{display:"flex",height:"100vh",fontFamily:F,background:C.bg,color:C.tx}}>
     <style dangerouslySetInnerHTML={{__html:"@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:"+C.b1+";border-radius:3px}select option{background:"+C.s1+";color:"+C.tx+"}input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.7)}"}}/>
-    <Sidebar user={user} view={view} setView={sView} onLogout={logout} badge={user.role==="admin"?newC:0}/>
+    <Sidebar user={user} view={view} setView={sView} onLogout={logout} badge={user.role==="admin"?newC:0} isDark={isDark} onToggleTheme={toggleTheme}/>
     <div style={{flex:1,overflow:"auto",padding:"18px 24px"}}>
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
         <button onClick={function(){sSN(true)}} style={{position:"relative",background:"none",border:"none",color:C.t2,fontSize:16,cursor:"pointer",padding:3}}>🔔{unread>0&&<span style={{position:"absolute",top:0,right:0,width:13,height:13,borderRadius:"50%",background:C.rd,color:"#fff",fontSize:7,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{unread>9?"9+":unread}</span>}</button></div>
