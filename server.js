@@ -73,6 +73,22 @@ function dbSet(key, value) {
   }
 }
 
+// ── One-time DB cleanup: remove fake @hata.local emails stored by older code ─
+(function fixFakeEmails() {
+  const users = dbGet('gp-users');
+  if (!Array.isArray(users)) return;
+  let changed = false;
+  const fixed = users.map((u) => {
+    if (u.adAuth && u.email && u.email.endsWith('@hata.local')) {
+      changed = true;
+      console.log(`  🔧 Taisomas netikras el. paštas vartotojui: ${u.username}`);
+      return Object.assign({}, u, { email: '' });
+    }
+    return u;
+  });
+  if (changed) dbSet('gp-users', fixed);
+})();
+
 // ── API endpoints ────────────────────────────────────────────
 
 app.get('/api/store/:key', (req, res) => {
@@ -176,9 +192,14 @@ app.post('/api/auth/ldap', (req, res) => {
 function finishLogin(res, username, email, displayName) {
   let users = dbGet('gp-users') || [];
 
-  let user = users.find((u) => u.username === username || u.email === email);
+  // Only match by username (exact) or by email when email is non-empty.
+  // Never match on empty email — it would collide with any user missing an email field.
+  const existingByUsername = users.find((u) => u.adAuth && u.username === username);
+  const existingByEmail    = email ? users.find((u) => u.adAuth && u.email === email) : null;
+  let user = existingByUsername || existingByEmail || null;
 
   if (!user) {
+    // Brand-new AD user — always starts as 'pending', no role
     user = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
       name: displayName,
@@ -191,10 +212,13 @@ function finishLogin(res, username, email, displayName) {
       createdAt: new Date().toISOString(),
     };
     dbSet('gp-users', users.concat([user]));
-    console.log(`  👤 Naujas AD vartotojas: ${displayName} (${email})`);
+    console.log(`  👤 Naujas AD vartotojas: ${displayName} (${email || username})`);
   } else {
-    user = Object.assign({}, user, { name: displayName, email: email });
-    dbSet('gp-users', users.map((u) => (u.username === username ? user : u)));
+    // Returning user — refresh name/email from AD but keep their assigned role intact
+    const updatedEmail = email || user.email; // never overwrite real email with empty string
+    user = Object.assign({}, user, { name: displayName, email: updatedEmail, username: username });
+    dbSet('gp-users', users.map((u) => (u.id === user.id ? user : u)));
+    console.log(`  🔄 AD vartotojas prisijungė: ${displayName} (${updatedEmail || username}), rolė: ${user.role}`);
   }
 
   res.json({ user });
