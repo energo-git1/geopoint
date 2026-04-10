@@ -70,7 +70,7 @@ app.post('/api/auth/ldap', (req, res) => {
     return res.status(400).json({ error: 'Trūksta prisijungimo duomenų' });
   }
 
-  const client = ldap.createClient({ url: LDAP_URL, timeout: 5000, connectTimeout: 5000 });
+  const client = ldap.createClient({ url: LDAP_URL, timeout: 5000, connectTimeout: 5000, reconnect: false });
 
   let responded = false;
   function safeRespond(code, body) {
@@ -106,6 +106,7 @@ app.post('/api/auth/ldap', (req, res) => {
 
       let userEntry = null;
       result.on('searchEntry', (entry) => { userEntry = entry; });
+      result.on('searchReference', () => { /* ignore AD referrals */ });
       result.on('error', () => { client.destroy(); safeRespond(503, { error: 'AD paieškos klaida.' }); });
       result.on('end', () => {
         if (!userEntry) {
