@@ -176,7 +176,7 @@ app.get('*', (req, res) => {
 // ── Start server ─────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n  📐 Geopoint veikia: http://localhost:${PORT}\n`);
-  console.log(`  🔐 AD autentikacija: ${LDAP_URL} (${LDAP_DOMAIN})\n`);
+  console.log(`  🔐 AD autentikacija: ${LDAP_URL}\n`);
 
   // Ensure data directory exists
   if (!fs.existsSync(DATA_DIR)) {
