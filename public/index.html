@@ -446,7 +446,7 @@ function App(){
 
   function doAuth(u,fromAD){
     // If AD user, merge into local users list
-    if(fromAD){sUsers(function(prev){var exists=prev.find(function(x){return x.id===u.id||x.username===u.username});return exists?prev.map(function(x){return x.id===u.id?u:x}):prev.concat([u]})}
+    if(fromAD){sUsers(function(prev){var exists=prev.find(function(x){return x.id===u.id||x.username===u.username});return exists?prev.map(function(x){return x.id===u.id?u:x}):prev.concat([u])});}
     sUser(u);
     if(u.role==="pending"){sView("pending");sSet("gp-session",u);return}
     sView(u.role==="orderer"?"my":u.role==="admin"?"inbox":"assigned");sSet("gp-session",u)}
