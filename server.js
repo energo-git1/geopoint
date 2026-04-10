@@ -99,9 +99,11 @@ app.post('/api/auth/ldap', (req, res) => {
       attributes: ['dn', 'givenName', 'sn', 'mail', 'sAMAccountName'],
       timeLimit: 5,
     };
+    // LDAP_SERVER_DOMAIN_SCOPE_OID — prevents AD from generating cross-domain referrals
+    const noReferralControl = new ldap.Control({ type: '1.2.840.113556.1.4.1339', criticality: false });
     console.log('[LDAP] Step 2: Searching for user:', username);
 
-    client.search(LDAP_BASE_DN, searchOpts, (searchErr, result) => {
+    client.search(LDAP_BASE_DN, searchOpts, [noReferralControl], (searchErr, result) => {
       if (searchErr) {
         client.destroy();
         console.error('[LDAP] Step 2 FAILED - search error:', searchErr.message);
