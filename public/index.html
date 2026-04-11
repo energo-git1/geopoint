@@ -479,7 +479,7 @@ function App(){
   if(!loaded)return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,color:C.t2}}>Kraunama...</div>;
   if(!user)return <AuthScreen onAuth={doAuth} users={users}/>;
   if(user.role==="pending")return <PendingScreen user={user} onLogout={logout}/>;
-  if(user.mustChangePassword)return <PasswordChange onChangePassword={changePassword}/>;
+  if(user.mustChangePassword)return <PasswordChange user={user} onChangePassword={changePassword}/>;
 
   var vo=orders;var title="";var desc="";var voUnfiltered=orders;
   if(user.role==="orderer"){voUnfiltered=orders.filter(function(o){return o.createdBy===user.id});vo=voUnfiltered;title="Mano užsakymai";desc=voUnfiltered.length+" pateikti";
