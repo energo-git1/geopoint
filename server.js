@@ -122,10 +122,26 @@ function dbSet(key, value) {
 
 // ── API endpoints ────────────────────────────────────────────
 
-// gp-users: strip password before sending to client
+// gp-users GET: strip passwords before sending to client
 app.get('/api/store/gp-users', (req, res) => {
   const users = dbGet('gp-users') || [];
   res.json({ key: 'gp-users', value: users.map(({ password, ...u }) => u) });
+});
+
+// gp-users PUT: client never has passwords, so merge them back from DB before saving
+app.put('/api/store/gp-users', (req, res) => {
+  const incoming = Array.isArray(req.body.value) ? req.body.value : [];
+  const existing = dbGet('gp-users') || [];
+  const pwMap = {};
+  existing.forEach((u) => { if (u.password) pwMap[u.id] = u.password; });
+
+  const merged = incoming.map((u) => {
+    // Restore password if client didn't send one (it was stripped)
+    if (!u.password && pwMap[u.id]) return Object.assign({}, u, { password: pwMap[u.id] });
+    return u;
+  });
+  dbSet('gp-users', merged);
+  res.json({ ok: true });
 });
 
 app.get('/api/store/:key', (req, res) => {
