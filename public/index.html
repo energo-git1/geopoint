@@ -350,8 +350,11 @@ function UserMgmt(p){
   var _nn=useState("");var nn=_nn[0],sNN=_nn[1];var _ne=useState("");var ne=_ne[0],sNE=_ne[1];var _np=useState("");var np=_np[0],sNP=_np[1];var _nr=useState("");var nr=_nr[0],sNR=_nr[1];
   var _del=useState(null);var delId=_del[0],sDel=_del[1];
   var _ar=useState(null);var assignId=_ar[0],sAR=_ar[1];var _arole=useState("");var assignRole=_arole[0],sARole=_arole[1];
+  var _em=useState(null);var emailUid=_em[0],sEM=_em[1];var _emv=useState("");var emailVal=_emv[0],sEMV=_emv[1];
   function doAdd(){if(!nn||!ne||!np||!nr||np.length<4)return;p.onAddUser({id:uid(),name:nn,email:ne,password:np,role:nr,mustChangePassword:true});sAdd(false);sNN("");sNE("");sNP("");sNR("")}
   function doAssign(){if(!assignId||!assignRole)return;p.onAssignRole(assignId,assignRole);sAR(null);sARole("")}
+  function openEmailEdit(u){sEM(u.id);sEMV(u.email||"")}
+  async function saveEmail(){if(!emailUid)return;await p.onEditEmail(emailUid,emailVal);sEM(null)}
   var pending=p.users.filter(function(u){return u.role==="pending"});
   var active=p.users.filter(function(u){return u.role!=="pending"});
   return <div>
@@ -380,6 +383,7 @@ function UserMgmt(p){
     </div>
     <div style={{display:"flex",flexDirection:"column",gap:4}}>{active.map(function(u){return <div key={u.id} style={{padding:"10px 14px",background:C.s2,borderRadius:8,border:"1px solid "+C.b1,display:"flex",alignItems:"center",gap:10}}>
       <Av name={u.name} size={34}/><div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:C.tx,fontFamily:F}}>{u.name}{u.adAuth&&<span style={{fontSize:9,color:C.ac,marginLeft:6,fontFamily:FM}}>AD</span>}{u.mustChangePassword&&<span style={{fontSize:9,color:C.yl,marginLeft:6}}>⚠️ laukia slaptažodžio keitimo</span>}</div><div style={{fontSize:10,color:C.t3,fontFamily:F}}>{u.email||u.username} · {ROLES[u.role]||u.role}</div></div>
+      <Btn v="ghost" sm onClick={function(){openEmailEdit(u)}} title="Redaguoti el. paštą">✉️</Btn>
       {!u.adAuth&&<Btn v="ghost" sm onClick={function(){sS(u.id);sP("")}}>🔑</Btn>}
       {u.role!=="admin"&&<Btn v="danger" sm onClick={function(){sDel(u.id)}}>🗑️</Btn>}
     </div>})}</div>
@@ -392,6 +396,12 @@ function UserMgmt(p){
     <Modal open={sel!==null} onClose={function(){sS(null)}} title="Keisti slaptažodį" w={360}><div style={{fontSize:11,color:C.t2,fontFamily:F,marginBottom:8}}>Vartotojas: {(p.users.find(function(u){return u.id===sel})||{}).name}</div><Inp label="Naujas slaptažodis" type="password" value={pw} onChange={sP} ph="Min. 4 simboliai" req/><div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sS(null)}}>Atšaukti</Btn><Btn sm disabled={pw.length<4} onClick={function(){p.onResetPw(sel,pw);sS(null)}}>Pakeisti</Btn></div></Modal>
     <Modal open={delId!==null} onClose={function(){sDel(null)}} title="Ištrinti vartotoją?" w={360}><div style={{fontSize:12,color:C.tx,fontFamily:F,marginBottom:12}}>Ar tikrai norite ištrinti vartotoją <strong>{(p.users.find(function(u){return u.id===delId})||{}).name}</strong>?</div><div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sDel(null)}}>Atšaukti</Btn><Btn v="danger" sm onClick={function(){p.onDeleteUser(delId);sDel(null)}}>Ištrinti</Btn></div></Modal>
     <Modal open={showAdd} onClose={function(){sAdd(false)}} title="Sukurti naują vartotoją" w={420}><Inp label="Vardas Pavardė" value={nn} onChange={sNN} req ph="Jonas Jonaitis"/><Inp label="El. paštas" type="email" value={ne} onChange={sNE} req ph="vardas@imone.lt"/><Inp label="Pradinis slaptažodis" type="text" value={np} onChange={sNP} req ph="Min. 4 simboliai"/><Sel label="Rolė" value={nr} onChange={sNR} req options={[{value:"orderer",label:"Užsakovas"},{value:"surveyor",label:"Geodezininkas"}]} ph="Pasirinkite rolę..."/><div style={{fontSize:10,color:C.t3,fontFamily:F,marginBottom:8}}>ℹ️ Vartotojas privalės pasikeisti slaptažodį pirmo prisijungimo metu.</div><div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sAdd(false)}}>Atšaukti</Btn><Btn sm disabled={!nn||!ne||np.length<4||!nr} onClick={doAdd}>Sukurti</Btn></div></Modal>
+    <Modal open={emailUid!==null} onClose={function(){sEM(null)}} title="✉️ El. pašto adresas" w={380}>
+      <div style={{fontSize:11,color:C.t2,fontFamily:F,marginBottom:12}}>Vartotojas: <strong>{(p.users.find(function(u){return u.id===emailUid})||{}).name}</strong></div>
+      <Inp label="El. pašto adresas" type="email" value={emailVal} onChange={sEMV} ph="vardas@imone.lt"/>
+      <div style={{fontSize:10,color:C.t3,fontFamily:F,marginBottom:10}}>ℹ️ AD vartotojams el. paštas bus atnaujinamas automatiškai kito prisijungimo metu, jei jis yra Active Directory.</div>
+      <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}><Btn v="secondary" sm onClick={function(){sEM(null)}}>Atšaukti</Btn><Btn sm onClick={saveEmail}>Išsaugoti</Btn></div>
+    </Modal>
   </div>}
 
 /* ═════ SIDEBAR ══════════════════════════════════════════════ */
@@ -518,6 +528,7 @@ function App(){
   function addUser(nu){sUsers(function(p){return p.concat([nu])})}
   function deleteUser(id){sUsers(function(p){return p.filter(function(u){return u.id!==id})})}
   function assignRole(uid2,role){sUsers(function(p){return p.map(function(u){return u.id===uid2?Object.assign({},u,{role:role}):u})})}
+  async function editEmail(uid2,email){try{var r=await fetch("/api/users/"+uid2+"/email",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email})});if(r.ok){var d=await r.json();sUsers(function(p){return p.map(function(u){return u.id===uid2?Object.assign({},u,{email:d.user.email}):u})})}}catch(e){}}
 
   // Navigate to order from notification
   function goToOrder(orderId){if(!orderId)return;var o=orders.find(function(x){return x.id===orderId});if(o){sSel(o);sSN(false)}}
@@ -562,7 +573,7 @@ function App(){
             onAddEntry={function(e){sSched(function(p){return p.concat([e])})}} onRemoveEntry={function(id){sSched(function(p){return p.filter(function(e){return e.id!==id})})}}
             onClickOrder={function(o){sSel(o)}}/></div>
         :view==="analytics"&&user.role==="admin"?<Analytics orders={orders} users={users} surveyors={surveyors}/>
-        :view==="users"&&user.role==="admin"?<UserMgmt users={users} onResetPw={resetPw} onAddUser={addUser} onDeleteUser={deleteUser} onAssignRole={assignRole}/>
+        :view==="users"&&user.role==="admin"?<UserMgmt users={users} onResetPw={resetPw} onAddUser={addUser} onDeleteUser={deleteUser} onAssignRole={assignRole} onEditEmail={editEmail}/>
         :view==="pw"?<PasswordChangePage user={user} onChangePassword={changePassword}/>
         :<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:6}}>

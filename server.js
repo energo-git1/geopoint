@@ -245,6 +245,17 @@ app.post('/api/auth/change-password', (req, res) => {
   res.json({ user: safeUser });
 });
 
+// ── Admin: update user email ──────────────────────────────────
+app.patch('/api/users/:id/email', (req, res) => {
+  const users = dbGet('gp-users') || [];
+  const user  = users.find((u) => u.id === req.params.id);
+  if (!user) return res.status(404).json({ error: 'Vartotojas nerastas.' });
+  const updated = Object.assign({}, user, { email: (req.body.email || '').trim() });
+  dbSet('gp-users', users.map((u) => (u.id === updated.id ? updated : u)));
+  const { password: _, ...safeUser } = updated;
+  res.json({ user: safeUser });
+});
+
 // ── AD / LDAP authentication ─────────────────────────────────
 app.post('/api/auth/ldap', (req, res) => {
   // Strip domain suffix if user typed "user@domain" — we always build UPN ourselves
@@ -296,7 +307,7 @@ app.post('/api/auth/ldap', (req, res) => {
       const searchOpts = {
         filter: `(&(objectCategory=Person)(sAMAccountName=${username}))`,
         scope: 'sub',
-        attributes: ['givenName', 'sn', 'mail'],
+        attributes: ['givenName', 'sn', 'mail', 'userPrincipalName'],
         timeLimit: 5,
       };
 
@@ -317,13 +328,15 @@ app.post('/api/auth/ldap', (req, res) => {
         result.on('searchReference', () => {});
         result.on('error', () => {
           svcClient.destroy();
-          const email = attrs.mail || '';
+          const upn   = attrs.userPrincipalName || '';
+          const email = attrs.mail || (!upn.toLowerCase().endsWith('@hata.local') ? upn : '');
           const name  = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
           finishLogin(res, username, email, name);
         });
         result.on('end', () => {
           svcClient.unbind();
-          const email = attrs.mail || '';
+          const upn   = attrs.userPrincipalName || '';
+          const email = attrs.mail || (!upn.toLowerCase().endsWith('@hata.local') ? upn : '');
           const name  = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
           console.log('[LDAP] Step 2 complete. Name:', name, '| Email:', email);
           finishLogin(res, username, email, name);
