@@ -89,22 +89,37 @@ function dbSet(key, value) {
   if (changed) dbSet('gp-users', fixed);
 })();
 
-// ── Startup: ensure geoadmin local admin exists ───────────────
+// ── Startup: ensure geoadmin local admin exists and has a password ─
 (function ensureLocalAdmin() {
   const users = dbGet('gp-users') || [];
   const hasGeoadmin = users.find((u) => !u.adAuth && u.username === 'geoadmin');
-  if (hasGeoadmin) return;
 
-  // Migrate old admin (by id or local admin role) → geoadmin
+  if (hasGeoadmin) {
+    // Geoadmin exists — make sure password wasn't wiped by the frontend save bug
+    if (!hasGeoadmin.password) {
+      const fixed = users.map((u) =>
+        u.id === hasGeoadmin.id
+          ? Object.assign({}, u, { password: 'Energo99', mustChangePassword: true })
+          : u
+      );
+      dbSet('gp-users', fixed);
+      console.log('  🔧 Atkurtas geoadmin slaptažodis (buvo ištryntas)');
+    }
+    return;
+  }
+
+  // No geoadmin yet — migrate old admin or create fresh
   const oldAdmin = users.find((u) => u.id === 'admin1' || (!u.adAuth && u.role === 'admin'));
   if (oldAdmin) {
+    const pw = oldAdmin.password || 'Energo99';
     const migrated = users.map((u) =>
-      u.id === oldAdmin.id ? Object.assign({}, u, { username: 'geoadmin', email: '' }) : u
+      u.id === oldAdmin.id
+        ? Object.assign({}, u, { username: 'geoadmin', email: '', password: pw })
+        : u
     );
     dbSet('gp-users', migrated);
     console.log('  🔧 Vietinis administratorius pervadintas į geoadmin');
   } else {
-    // Fresh install — create geoadmin with default password
     dbSet('gp-users', users.concat([{
       id: 'admin1',
       name: 'Administratorius',
