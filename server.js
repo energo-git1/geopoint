@@ -98,6 +98,14 @@ function dbSet(key, value) {
   }
 }
 
+// ── One-time cleanup: remove shared server-side session (security fix) ───────
+(function removeSharedSession() {
+  if (dbGet('gp-session')) {
+    stmtDelete.run('gp-session');
+    console.log('  🔒 Pašalintas bendras serverio sesijos įrašas (saugumo pataisymas)');
+  }
+})();
+
 // ── One-time DB cleanup: remove fake @hata.local emails stored by older code ─
 (function fixFakeEmails() {
   const users = dbGet('gp-users');

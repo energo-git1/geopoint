@@ -488,7 +488,7 @@ function App(){
   var _sf=useState("all");var stFilt=_sf[0],sSF=_sf[1];var _of=useState("all");var ordFilt=_of[0],sOF=_of[1];var _gf=useState("all");var geoFilt=_gf[0],sGF=_gf[1];
   var _stab=useState("active");var sTab=_stab[0],sSTab=_stab[1];
 
-  useEffect(function(){(async function(){try{var u=await sGet("gp-users");var o=await sGet("gp-orders");var s=await sGet("gp-sched");var n=await sGet("gp-notifs");var sess=await sGet("gp-session");if(u&&u.length>0)sUsers(u);if(o&&o.length>0)sOrders(o);if(s&&s.length>0)sSched(s);if(n)sNotifs(n);if(sess){var f=(u||SEED_USERS).find(function(x){return x.id===sess.id});if(f){sUser(f);sView(f.role==="orderer"?"my":f.role==="admin"?"inbox":"assigned")}}}catch(e){}sL(true)})()},[]);
+  useEffect(function(){(async function(){try{var u=await sGet("gp-users");var o=await sGet("gp-orders");var s=await sGet("gp-sched");var n=await sGet("gp-notifs");if(u&&u.length>0)sUsers(u);if(o&&o.length>0)sOrders(o);if(s&&s.length>0)sSched(s);if(n)sNotifs(n);try{var raw=localStorage.getItem("gp-session");if(raw){var sess=JSON.parse(raw);var f=(u||SEED_USERS).find(function(x){return x.id===sess.id});if(f){sUser(f);sView(f.role==="orderer"?"my":f.role==="admin"?"inbox":"assigned")}}}catch(se){localStorage.removeItem("gp-session")}}catch(e){}sL(true)})()},[]);
   useEffect(function(){if(loaded)sSet("gp-orders",orders)},[orders,loaded]);
   useEffect(function(){if(loaded)sSet("gp-users",users)},[users,loaded]);
   useEffect(function(){if(loaded)sSet("gp-sched",sched)},[sched,loaded]);
@@ -498,10 +498,10 @@ function App(){
     // If AD user, merge into local users list
     if(fromAD){sUsers(function(prev){var exists=prev.find(function(x){return x.id===u.id||x.username===u.username});return exists?prev.map(function(x){return x.id===u.id?u:x}):prev.concat([u])});}
     sUser(u);
-    if(u.role==="pending"){sView("pending");sSet("gp-session",u);return}
-    sView(u.role==="orderer"?"my":u.role==="admin"?"inbox":"assigned");sSet("gp-session",u)}
-  function logout(){sUser(null);sSet("gp-session",null)}
-  function changePassword(updatedUser){sUsers(function(p){return p.map(function(u){return u.id===updatedUser.id?updatedUser:u})});sUser(updatedUser);sSet("gp-session",updatedUser)}
+    if(u.role==="pending"){sView("pending");try{localStorage.setItem("gp-session",JSON.stringify(u))}catch(e){};return}
+    sView(u.role==="orderer"?"my":u.role==="admin"?"inbox":"assigned");try{localStorage.setItem("gp-session",JSON.stringify(u))}catch(e){}}
+  function logout(){sUser(null);try{localStorage.removeItem("gp-session")}catch(e){}}
+  function changePassword(updatedUser){sUsers(function(p){return p.map(function(u){return u.id===updatedUser.id?updatedUser:u})});sUser(updatedUser);try{localStorage.setItem("gp-session",JSON.stringify(updatedUser))}catch(e){}}
   function addN(to,msg,orderId){sNotifs(function(p){return[{id:uid(),to:to,message:msg,time:now(),read:false,orderId:orderId||null}].concat(p)})}
 
   function addOrder(o){sOrders(function(p){return[o].concat(p)});users.filter(function(u){return u.role==="admin"}).forEach(function(a){addN(a.id,"Naujas užsakymas: "+(TL[o.type]||o.type)+" — "+o.address,o.id)});sView("my")}
