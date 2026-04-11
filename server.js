@@ -39,10 +39,13 @@ const upload = multer({
 });
 
 // ── Active Directory config ───────────────────────────────────
-const LDAP_URL      = 'ldap://192.168.1.100:389';
-const LDAP_BASE_DN  = 'DC=hata,DC=local';
-const LDAP_SVC_DN   = process.env.LDAP_SVC_DN   || 'CN=svc_jira,OU=Service Accounts,DC=hata,DC=local';
-const LDAP_SVC_PASS = process.env.LDAP_SVC_PASS || '';
+const LDAP_URL        = 'ldap://192.168.1.100:389';
+const LDAP_BASE_DN    = 'DC=hata,DC=local';
+// Narrow search base avoids DomainDnsZones/ForestDnsZones referrals.
+// Override with: pm2 set geopoint LDAP_USERS_BASE "OU=Users,DC=hata,DC=local"
+const LDAP_USERS_BASE = process.env.LDAP_USERS_BASE || LDAP_BASE_DN;
+const LDAP_SVC_DN     = process.env.LDAP_SVC_DN   || 'CN=svc_jira,OU=Service Accounts,DC=hata,DC=local';
+const LDAP_SVC_PASS   = process.env.LDAP_SVC_PASS || '';
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
@@ -305,42 +308,41 @@ app.post('/api/auth/ldap', (req, res) => {
       }
 
       const searchOpts = {
-        filter: `(&(objectCategory=Person)(sAMAccountName=${username}))`,
+        filter: `(&(objectClass=user)(sAMAccountName=${username}))`,
         scope: 'sub',
         attributes: ['givenName', 'sn', 'mail', 'userPrincipalName'],
-        timeLimit: 5,
+        timeLimit: 8,
       };
 
-      svcClient.search(LDAP_BASE_DN, searchOpts, (searchErr, result) => {
+      svcClient.search(LDAP_USERS_BASE, searchOpts, (searchErr, result) => {
         if (searchErr) {
-          svcClient.destroy();
+          try { svcClient.destroy(); } catch (_) {}
           console.log('[LDAP] Step 2 search error:', searchErr.message);
           return finishLogin(res, username, '', username);
         }
 
         let attrs = {};
+        let done = false;
+        function finish() {
+          if (done) return;
+          done = true;
+          try { svcClient.destroy(); } catch (_) {}
+          const upn   = attrs.userPrincipalName || '';
+          const email = attrs.mail || (!upn.toLowerCase().endsWith('@hata.local') ? upn : '');
+          const name  = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
+          console.log('[LDAP] Step 2 done. Name:', name, '| Email:', email);
+          finishLogin(res, username, email, name);
+        }
+
         result.on('searchEntry', (entry) => {
           (entry.attributes || []).forEach((a) => {
             attrs[a.type] = a.values && a.values.length === 1 ? a.values[0] : a.values;
           });
-          console.log('[LDAP] Step 2 attrs:', JSON.stringify(attrs));
+          console.log('[LDAP] Step 2 entry attrs:', JSON.stringify(attrs));
         });
-        result.on('searchReference', () => {});
-        result.on('error', () => {
-          svcClient.destroy();
-          const upn   = attrs.userPrincipalName || '';
-          const email = attrs.mail || (!upn.toLowerCase().endsWith('@hata.local') ? upn : '');
-          const name  = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
-          finishLogin(res, username, email, name);
-        });
-        result.on('end', () => {
-          svcClient.unbind();
-          const upn   = attrs.userPrincipalName || '';
-          const email = attrs.mail || (!upn.toLowerCase().endsWith('@hata.local') ? upn : '');
-          const name  = [attrs.givenName, attrs.sn].filter(Boolean).join(' ') || username;
-          console.log('[LDAP] Step 2 complete. Name:', name, '| Email:', email);
-          finishLogin(res, username, email, name);
-        });
+        result.on('searchReference', () => {}); // ignore referrals
+        result.on('error',  () => { finish(); });
+        result.on('end',    () => { finish(); });
       });
     });
   });
