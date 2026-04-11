@@ -3,15 +3,40 @@ const fs = require('fs');
 const path = require('path');
 const ldap = require('ldapjs');
 const Database = require('better-sqlite3');
+const multer = require('multer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // On Azure Linux App Service, /home is persistent storage
 // Locally, use the project directory
-const DATA_DIR  = process.env.WEBSITE_SITE_NAME ? '/home/data' : __dirname;
-const DB_FILE   = path.join(DATA_DIR, 'geopoint.db');
-const JSON_FILE = path.join(DATA_DIR, 'data.json'); // legacy — migrated on first run
+const DATA_DIR   = process.env.WEBSITE_SITE_NAME ? '/home/data' : __dirname;
+const DB_FILE    = path.join(DATA_DIR, 'geopoint.db');
+const JSON_FILE  = path.join(DATA_DIR, 'data.json'); // legacy — migrated on first run
+const UPLOAD_DIR = process.env.WEBSITE_SITE_NAME ? '/home/data/uploads' : path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const MAX_FILE_SIZE    = 500 * 1024 * 1024; // 500 MB
+const MAX_FILENAME_LEN = 70;
+
+function srvUid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+// Sanitise filename: keep alphanumeric, dots, dashes, underscores and Lithuanian letters
+function safeName(name) { return name.replace(/[^a-zA-Z0-9.\-_\u00C0-\u017E]/g, '_').slice(0, 200); }
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+    filename: (_req, file, cb) => cb(null, `${srvUid()}_${safeName(file.originalname)}`),
+  }),
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (file.originalname.length > MAX_FILENAME_LEN) {
+      return cb(new Error(`Failo pavadinimas per ilgas (max ${MAX_FILENAME_LEN} simbolių).`));
+    }
+    cb(null, true);
+  },
+});
 
 // ── Active Directory config ───────────────────────────────────
 const LDAP_URL      = 'ldap://192.168.1.100:389';
@@ -335,6 +360,29 @@ function finishLogin(res, username, email, displayName) {
 
   res.json({ user });
 }
+
+// ── File upload ───────────────────────────────────────────────
+app.post('/api/upload', (req, res) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      const msg = err.code === 'LIMIT_FILE_SIZE'
+        ? `Failas per didelis (max 500 MB).`
+        : err.message || 'Įkėlimo klaida.';
+      return res.status(400).json({ error: msg });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Failas neįkeltas.' });
+    res.json({
+      id:       srvUid(),
+      name:     req.file.originalname,
+      filename: req.file.filename,
+      size:     req.file.size,
+      url:      `/uploads/${req.file.filename}`,
+    });
+  });
+});
+
+// Serve uploaded files for download
+app.use('/uploads', express.static(UPLOAD_DIR));
 
 // Fallback — serve index.html for any non-API route
 app.get('*', (req, res) => {

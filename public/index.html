@@ -132,7 +132,39 @@ function Sel(p){var _f=useState(false);var f=_f[0],sF=_f[1];return <div style={{
 function Modal(p){if(!p.open)return null;return <div onClick={p.onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",backdropFilter:"blur(5px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}><div onClick={function(e){e.stopPropagation()}} style={{background:C.s1,border:"1px solid "+C.b1,borderRadius:16,width:"100%",maxWidth:p.w||520,maxHeight:"90vh",overflow:"auto",boxShadow:"0 24px 48px rgba(0,0,0,.5)"}}><div style={{padding:"14px 18px",borderBottom:"1px solid "+C.b1,display:"flex",justifyContent:"space-between",alignItems:"center"}}><h3 style={{margin:0,fontSize:15,fontWeight:700,color:C.tx,fontFamily:F}}>{p.title}</h3><button onClick={p.onClose} style={{background:"none",border:"none",color:C.t3,fontSize:18,cursor:"pointer"}}>✕</button></div><div style={{padding:18}}>{p.children}</div></div></div>}
 function Av(p){var s=p.size||32;var ini=p.name?p.name.split(" ").map(function(w){return w[0]}).join("").slice(0,2).toUpperCase():"?";var h=(p.name||"").split("").reduce(function(a,c){return a+c.charCodeAt(0)},0);return <div style={{width:s,height:s,borderRadius:"50%",background:"hsl("+(h%360)+",48%,40%)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:s*.35,fontWeight:700,fontFamily:FM,flexShrink:0}}>{ini}</div>}
 function Empty(p){return <div style={{textAlign:"center",padding:"40px 20px"}}><div style={{fontSize:40,marginBottom:8}}>{p.icon}</div><div style={{fontSize:14,fontWeight:600,color:C.t2,fontFamily:F}}>{p.title}</div></div>}
-function FileZone(p){var _d=useState(false);var drag=_d[0],sD=_d[1];var ref=useRef();var accept=p.accept||"*";var hf=async function(fl){var arr=Array.from(fl);var nf=arr.map(function(f){return{name:f.name,size:f.size,id:uid(),raw:f}});p.setFiles(function(prev){return prev.concat(nf)});for(var i=0;i<arr.length;i++){if(arr[i].name.endsWith(".shp")&&p.onAreaCalc){var ha=await estimateShpArea(arr[i]);if(ha!==null)p.onAreaCalc(ha)}}};return <div style={{marginBottom:12}}><label style={{display:"block",fontSize:11,fontWeight:600,color:C.t2,marginBottom:4,fontFamily:F}}>{p.label||"Failai"}{p.required&&<span style={{color:C.rd}}> *</span>}</label><div onDragOver={function(e){e.preventDefault();sD(true)}} onDragLeave={function(){sD(false)}} onDrop={function(e){e.preventDefault();sD(false);hf(e.dataTransfer.files)}} onClick={function(){ref.current&&ref.current.click()}} style={{border:"2px dashed "+(drag?C.ac:C.b1),borderRadius:10,padding:"18px 14px",textAlign:"center",cursor:"pointer",background:drag?C.acD:C.bg}}><input ref={ref} type="file" multiple accept={accept} onChange={function(e){hf(e.target.files)}} style={{display:"none"}}/><div style={{fontSize:20,marginBottom:3}}>📂</div><div style={{color:C.t2,fontSize:11,fontFamily:F}}>Nutempkite arba <span style={{color:C.ac,fontWeight:600}}>pasirinkite</span></div></div>{p.files.length>0&&<div style={{marginTop:5}}>{p.files.map(function(f){return <div key={f.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:C.bg,borderRadius:5,border:"1px solid "+C.b1,marginBottom:2}}><span style={{fontSize:11,color:C.tx,fontFamily:F}}>📄 {f.name}</span><button onClick={function(){p.setFiles(function(pr){return pr.filter(function(x){return x.id!==f.id})})}} style={{background:"none",border:"none",color:C.t3,cursor:"pointer",fontSize:11}}>✕</button></div>})}</div>}</div>}
+var FILE_MAX_BYTES=500*1024*1024;var FILE_MAX_NAME=70;
+function fmtSize(b){if(b<1024)return b+"B";if(b<1048576)return Math.round(b/1024)+"KB";return(b/1048576).toFixed(1)+"MB"}
+function FileZone(p){
+  var _d=useState(false);var drag=_d[0],sD=_d[1];
+  var _er=useState([]);var errs=_er[0],sEr=_er[1];
+  var ref=useRef();var accept=p.accept||"*";
+  var hf=async function(fl){
+    var arr=Array.from(fl);var bad=[];var good=[];
+    arr.forEach(function(f){
+      if(f.name.length>FILE_MAX_NAME){bad.push("„"+f.name.slice(0,40)+"…" +": pavadinimas per ilgas (max "+FILE_MAX_NAME+" simbolių)");return}
+      if(f.size>FILE_MAX_BYTES){bad.push("„"+f.name+": failas per didelis (max 500 MB, dydis "+fmtSize(f.size)+")");return}
+      good.push(f);
+    });
+    sEr(bad);
+    if(good.length===0)return;
+    var nf=good.map(function(f){return{name:f.name,size:f.size,id:uid(),raw:f}});
+    p.setFiles(function(prev){return prev.concat(nf)});
+    for(var i=0;i<good.length;i++){if(good[i].name.endsWith(".shp")&&p.onAreaCalc){var ha=await estimateShpArea(good[i]);if(ha!==null)p.onAreaCalc(ha)}}
+  };
+  return <div style={{marginBottom:12}}>
+    <label style={{display:"block",fontSize:11,fontWeight:600,color:C.t2,marginBottom:4,fontFamily:F}}>{p.label||"Failai"}{p.required&&<span style={{color:C.rd}}> *</span>}</label>
+    <div onDragOver={function(e){e.preventDefault();sD(true)}} onDragLeave={function(){sD(false)}} onDrop={function(e){e.preventDefault();sD(false);hf(e.dataTransfer.files)}} onClick={function(){ref.current&&ref.current.click()}} style={{border:"2px dashed "+(drag?C.ac:C.b1),borderRadius:10,padding:"16px 14px",textAlign:"center",cursor:"pointer",background:drag?C.acD:C.bg}}>
+      <input ref={ref} type="file" multiple accept={accept} onChange={function(e){hf(e.target.files)}} style={{display:"none"}}/>
+      <div style={{fontSize:20,marginBottom:3}}>📂</div>
+      <div style={{color:C.t2,fontSize:11,fontFamily:F}}>Nutempkite arba <span style={{color:C.ac,fontWeight:600}}>pasirinkite</span></div>
+      <div style={{color:C.t3,fontSize:9,fontFamily:F,marginTop:4}}>Max dydis: 500 MB · Max pavadinimo ilgis: {FILE_MAX_NAME} simboliai{p.accept?" · "+p.accept:""}</div>
+    </div>
+    {errs.length>0&&<div style={{marginTop:4}}>{errs.map(function(e,i){return <div key={i} style={{fontSize:10,color:C.rd,fontFamily:F,padding:"2px 4px"}}>⚠ {e}</div>})}</div>}
+    {p.files.length>0&&<div style={{marginTop:5}}>{p.files.map(function(f){return <div key={f.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:C.bg,borderRadius:5,border:"1px solid "+C.b1,marginBottom:2}}>
+      <span style={{fontSize:11,color:C.tx,fontFamily:F}}>📄 {f.name} <span style={{color:C.t3,fontSize:9}}>({fmtSize(f.size)})</span></span>
+      <button onClick={function(e){e.stopPropagation();p.setFiles(function(pr){return pr.filter(function(x){return x.id!==f.id})})}} style={{background:"none",border:"none",color:C.t3,cursor:"pointer",fontSize:11}}>✕</button>
+    </div>})}</div>}
+  </div>}
 
 /* ═════ ORDER HISTORY TIMELINE ═══════════════════════════════ */
 function HistoryTimeline(p){
@@ -197,9 +229,25 @@ function WeekSchedule(p){
 /* ═════ ORDER FORM ═══════════════════════════════════════════ */
 function OrderForm(p){
   var _t=useState("");var tp=_t[0],sT=_t[1];var _d=useState("");var du=_d[0],sD=_d[1];var _a=useState("");var ad=_a[0],sA=_a[1];var _ds=useState("");var de=_ds[0],sDs=_ds[1];var _e=useState(p.user.email||"");var em=_e[0],sE=_e[1];var _cn=useState("");var cn=_cn[0],sCN=_cn[1];var _cp=useState("");var cp=_cp[0],sCP=_cp[1];var _f=useState([]);var fi=_f[0],sF=_f[1];var _ar=useState(null);var ar=_ar[0],sAr=_ar[1];var _len=useState("");var len=_len[0],sLen=_len[1];var _dw=useState("");var dw=_dw[0],sDW=_dw[1];
+  var _up=useState(false);var uploading=_up[0],sUp=_up[1];var _ue=useState("");var upErr=_ue[0],sUE=_ue[1];
   var isT=tp==="Topografines nuotraukos matavimas";var isI=tp==="Ispildomosios nuotraukos matavimas";var isFW=FIELD_TYPES.indexOf(tp)!==-1;
   function checkDate(date){if(!date||!isFW){sDW("");return}var c=countFieldWork(p.orders,date);if(c>=2){sDW("Ši data jau užimta ("+c+"/2 lauko darbai). Pasirinkite kitą datą.");sD("")}else sDW("")}
   var ok=tp&&du&&ad&&em&&(!isT||fi.length>0)&&(!isI||(cn&&cp&&len&&fi.length>0));
+  async function submit(){
+    if(!ok||uploading)return;
+    sUp(true);sUE("");
+    try{
+      var uploaded=[];
+      for(var i=0;i<fi.length;i++){
+        var fd=new FormData();fd.append("file",fi[i].raw);
+        var r=await fetch("/api/upload",{method:"POST",body:fd});
+        var d=await r.json();
+        if(!r.ok){sUE("Klaida įkeliant „"+fi[i].name+'": '+(d.error||"serverio klaida"));sUp(false);return}
+        uploaded.push({id:d.id,name:d.name,size:d.size,url:d.url});
+      }
+      p.onSubmit({id:uid(),type:tp,dueDate:du,address:ad,description:de,email:em,contactName:isI?cn:null,contactPhone:isI?cp:null,files:uploaded,areaHa:isT?ar:null,lengthM:isI?parseInt(len)||null:null,createdBy:p.user.id,status:"Naujas",assignedTo:null,createdAt:fmtDate(new Date()),completedAt:null,confirmedByAdmin:false,history:[{status:"Naujas",date:fmtDate(new Date())}]});
+    }catch(e){sUE("Klaida įkeliant failus. Bandykite dar kartą.");sUp(false)}
+  }
   return <div style={{maxWidth:540}}>
     <h2 style={{fontSize:18,fontWeight:800,color:C.tx,fontFamily:F,marginBottom:2}}>Naujas užsakymas</h2>
     <p style={{fontSize:11,color:C.t2,fontFamily:F,marginBottom:18}}>Užpildykite formą ir pateikite geodezijos skyriui.</p>
@@ -218,8 +266,10 @@ function OrderForm(p){
     {isT&&<div><FileZone files={fi} setFiles={sF} required label="SHP failas (užsakymo plotas)" accept=".shp,.shx,.dbf,.prj,.cpg,.zip" onAreaCalc={sAr}/>
       {ar!==null&&<div style={{background:C.gnD,border:"1px solid "+C.gn+"33",borderRadius:8,padding:"7px 10px",marginBottom:12,display:"flex",alignItems:"center",gap:6}}><span>📐</span><div><div style={{fontSize:10,fontWeight:700,color:C.gn,fontFamily:F}}>Plotas nustatytas automatiškai</div><div style={{fontSize:15,fontWeight:800,color:C.gn,fontFamily:FM}}>{ar} ha</div></div></div>}</div>}
     {tp&&!isT&&!isI&&<FileZone files={fi} setFiles={sF} label="Failai (neprivaloma)"/>}
-    <div style={{display:"flex",gap:6,marginTop:14,justifyContent:"flex-end"}}>{p.onCancel&&<Btn v="secondary" onClick={p.onCancel}>Atšaukti</Btn>}
-      <Btn onClick={function(){if(!ok)return;p.onSubmit({id:uid(),type:tp,dueDate:du,address:ad,description:de,email:em,contactName:isI?cn:null,contactPhone:isI?cp:null,files:fi.map(function(f){return{name:f.name,size:f.size,id:f.id}}),areaHa:isT?ar:null,lengthM:isI?parseInt(len)||null:null,createdBy:p.user.id,status:"Naujas",assignedTo:null,createdAt:fmtDate(new Date()),completedAt:null,confirmedByAdmin:false,history:[{status:"Naujas",date:fmtDate(new Date())}]})}} disabled={!ok}>📤 Pateikti užsakymą</Btn></div></div>}
+    {upErr&&<div style={{color:C.rd,fontSize:11,marginBottom:8,fontFamily:F}}>⚠️ {upErr}</div>}
+    {uploading&&<div style={{color:C.ac,fontSize:11,marginBottom:8,fontFamily:F}}>⏳ Įkeliami failai...</div>}
+    <div style={{display:"flex",gap:6,marginTop:14,justifyContent:"flex-end"}}>{p.onCancel&&<Btn v="secondary" onClick={p.onCancel} disabled={uploading}>Atšaukti</Btn>}
+      <Btn onClick={submit} disabled={!ok||uploading}>📤 {uploading?"Įkeliama...":"Pateikti užsakymą"}</Btn></div></div>}
 
 /* ═════ ORDER DETAIL ═════════════════════════════════════════ */
 function OrderDetail(p){
@@ -241,7 +291,7 @@ function OrderDetail(p){
       <div><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:2,fontFamily:F,textTransform:"uppercase",letterSpacing:1}}>Adresas</div><div style={{fontSize:13,color:C.tx,fontFamily:F}}>{o.address}</div></div>
       {o.description&&<div><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:2,fontFamily:F,textTransform:"uppercase",letterSpacing:1}}>Aprašymas</div><div style={{fontSize:11,color:C.t2,fontFamily:F,background:C.bg,padding:8,borderRadius:6,border:"1px solid "+C.b1}}>{o.description}</div></div>}
       {o.contactName&&<div style={{background:C.ylD,borderRadius:8,padding:8,border:"1px solid "+C.yl+"33"}}><div style={{fontSize:10,fontWeight:700,color:C.yl,marginBottom:3,fontFamily:F}}>👷 Kontaktinis asmuo objekte</div><div style={{fontSize:11,color:C.tx,fontFamily:F}}>{o.contactName} · {o.contactPhone}</div></div>}
-      {o.files&&o.files.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:2,fontFamily:F,textTransform:"uppercase",letterSpacing:1}}>Failai</div>{o.files.map(function(f,i){return <div key={i} style={{display:"flex",alignItems:"center",gap:5,padding:"4px 6px",background:C.bg,borderRadius:5,border:"1px solid "+C.b1,marginBottom:2}}><span>📄</span><span style={{fontSize:10,color:C.tx,fontFamily:F}}>{f.name}</span></div>})}</div>}
+      {o.files&&o.files.length>0&&<div><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:4,fontFamily:F,textTransform:"uppercase",letterSpacing:1}}>Failai</div>{o.files.map(function(f,i){return <div key={i} style={{display:"flex",alignItems:"center",gap:5,padding:"4px 8px",background:C.bg,borderRadius:5,border:"1px solid "+C.b1,marginBottom:2}}><span>📄</span>{f.url?<a href={f.url} download={f.name} style={{fontSize:10,color:C.ac,fontFamily:F,textDecoration:"none",fontWeight:600,flex:1}} onClick={function(e){e.stopPropagation()}}>{f.name}{f.size?<span style={{color:C.t3,fontWeight:400}}> ({fmtSize(f.size)})</span>:null} ↓</a>:<span style={{fontSize:10,color:C.tx,fontFamily:F}}>{f.name}</span>}</div>})}</div>}
       <div style={{display:"flex",gap:12}}><div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:2,textTransform:"uppercase",letterSpacing:1,fontFamily:F}}>Užsakovas</div><div style={{display:"flex",alignItems:"center",gap:5}}><Av name={cr?cr.name:""} size={22}/><span style={{fontSize:11,color:C.tx,fontFamily:F}}>{cr?cr.name:"-"}</span></div></div>
         <div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:C.t3,marginBottom:2,textTransform:"uppercase",letterSpacing:1,fontFamily:F}}>Geodezininkas</div>{as?<div style={{display:"flex",alignItems:"center",gap:5}}><Av name={as.name} size={22}/><span style={{fontSize:11,color:C.tx,fontFamily:F}}>{as.name}</span></div>:<span style={{fontSize:11,color:C.t3}}>Nepriskirtas</span>}</div></div>
       <div style={{fontSize:10,color:C.t3,fontFamily:FM}}>Sukurta: {o.createdAt} | Terminas: <strong style={{color:C.ac}}>{o.dueDate}</strong>{o.completedAt?" | Atlikta: "+o.completedAt:""}</div>
