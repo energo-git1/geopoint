@@ -89,7 +89,44 @@ function dbSet(key, value) {
   if (changed) dbSet('gp-users', fixed);
 })();
 
+// ── Startup: ensure geoadmin local admin exists ───────────────
+(function ensureLocalAdmin() {
+  const users = dbGet('gp-users') || [];
+  const hasGeoadmin = users.find((u) => !u.adAuth && u.username === 'geoadmin');
+  if (hasGeoadmin) return;
+
+  // Migrate old admin (by id or local admin role) → geoadmin
+  const oldAdmin = users.find((u) => u.id === 'admin1' || (!u.adAuth && u.role === 'admin'));
+  if (oldAdmin) {
+    const migrated = users.map((u) =>
+      u.id === oldAdmin.id ? Object.assign({}, u, { username: 'geoadmin', email: '' }) : u
+    );
+    dbSet('gp-users', migrated);
+    console.log('  🔧 Vietinis administratorius pervadintas į geoadmin');
+  } else {
+    // Fresh install — create geoadmin with default password
+    dbSet('gp-users', users.concat([{
+      id: 'admin1',
+      name: 'Administratorius',
+      username: 'geoadmin',
+      email: '',
+      password: 'Energo99',
+      role: 'admin',
+      adAuth: false,
+      mustChangePassword: true,
+      createdAt: new Date().toISOString(),
+    }]));
+    console.log('  👤 Sukurtas vietinis administratorius: geoadmin');
+  }
+})();
+
 // ── API endpoints ────────────────────────────────────────────
+
+// gp-users: strip password before sending to client
+app.get('/api/store/gp-users', (req, res) => {
+  const users = dbGet('gp-users') || [];
+  res.json({ key: 'gp-users', value: users.map(({ password, ...u }) => u) });
+});
 
 app.get('/api/store/:key', (req, res) => {
   res.json({ key: req.params.key, value: dbGet(req.params.key) });
@@ -98,6 +135,50 @@ app.get('/api/store/:key', (req, res) => {
 app.put('/api/store/:key', (req, res) => {
   dbSet(req.params.key, req.body.value);
   res.json({ ok: true });
+});
+
+// ── Local (non-AD) login ──────────────────────────────────────
+app.post('/api/auth/local', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password)
+    return res.status(400).json({ error: 'Trūksta prisijungimo duomenų.' });
+
+  const users = dbGet('gp-users') || [];
+  const user  = users.find((u) => !u.adAuth && u.username === username);
+
+  if (!user)            return res.status(401).json({ error: 'Vartotojas nerastas.' });
+  if (user.password !== password) return res.status(401).json({ error: 'Neteisingas slaptažodis.' });
+
+  const { password: _pw, ...safeUser } = user;
+  res.json({ user: safeUser });
+});
+
+// ── Change password (local users only) ───────────────────────
+app.post('/api/auth/change-password', (req, res) => {
+  const { userId, oldPassword, newPassword, forceChange } = req.body;
+  if (!userId || !newPassword)
+    return res.status(400).json({ error: 'Trūksta duomenų.' });
+  if (newPassword.length < 4)
+    return res.status(400).json({ error: 'Slaptažodis per trumpas (min. 4 simboliai).' });
+
+  const users = dbGet('gp-users') || [];
+  const user  = users.find((u) => u.id === userId);
+
+  if (!user) return res.status(404).json({ error: 'Vartotojas nerastas.' });
+  if (user.adAuth) return res.status(400).json({ error: 'AD vartotojai slaptažodžio nekeičia čia.' });
+
+  // Require old password unless: first forced login change, or admin-initiated reset
+  const skipOldCheck = user.mustChangePassword || forceChange;
+  if (!skipOldCheck && user.password !== oldPassword) {
+    return res.status(401).json({ error: 'Neteisingas dabartinis slaptažodis.' });
+  }
+
+  const mustChange = forceChange ? true : false;
+  const updated = Object.assign({}, user, { password: newPassword, mustChangePassword: mustChange });
+  dbSet('gp-users', users.map((u) => (u.id === userId ? updated : u)));
+
+  const { password: _pw, ...safeUser } = updated;
+  res.json({ user: safeUser });
 });
 
 // ── AD / LDAP authentication ─────────────────────────────────

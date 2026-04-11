@@ -116,7 +116,7 @@ function isNonWorkDay(dateStr){var d=new Date(dateStr);var day=d.getDay();return
 
 // SEED
 var SEED_USERS=[
-  {id:"admin1",name:"Tomas Ruzveltas",email:"tomas.ruzveltas@energolt.eu",password:"Energo99",role:"admin",mustChangePassword:false},
+  {id:"admin1",name:"Administratorius",username:"geoadmin",email:"",role:"admin",adAuth:false,mustChangePassword:false},
 ];
 var _today=new Date();var _mon=getMonday(_today);
 var SEED_ORDERS=[];
@@ -359,10 +359,10 @@ function Sidebar(p){
 /* ═════ AUTH ═════════════════════════════════════════════════ */
 function AuthScreen(p){
   var _tab=useState("ad");var tab=_tab[0],sTab=_tab[1];
-  var _e=useState("");var em=_e[0],sE=_e[1];var _p=useState("");var pw=_p[0],sP=_p[1];
+  var _lu=useState("");var lu=_lu[0],sLU=_lu[1];var _lp=useState("");var lp=_lp[0],sLP=_lp[1];
   var _un=useState("");var un=_un[0],sUN=_un[1];var _ap=useState("");var ap=_ap[0],sAP=_ap[1];
   var _er=useState("");var err=_er[0],sEr=_er[1];var _ld=useState(false);var ld=_ld[0],sLd=_ld[1];
-  function loginLocal(){sEr("");var u=p.users.find(function(x){return x.email===em&&!x.adAuth});if(!u){sEr("Vartotojas nerastas.");return}if(u.password!==pw){sEr("Neteisingas slaptažodis");return}p.onAuth(u)}
+  async function loginLocal(){sEr("");if(!lu||!lp)return;sLd(true);try{var r=await fetch("/api/auth/local",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:lu,password:lp})});var d=await r.json();if(!r.ok){sEr(d.error||"Prisijungimo klaida");sLd(false);return}p.onAuth(d.user)}catch(e){sEr("Serverio klaida. Bandykite vėliau.");sLd(false)}}
   async function loginAD(){sEr("");if(!un||!ap)return;sLd(true);try{var r=await fetch("/api/auth/ldap",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:un,password:ap})});var d=await r.json();if(!r.ok){sEr(d.error||"Prisijungimo klaida");sLd(false);return}p.onAuth(d.user,true)}catch(e){sEr("Serverio klaida. Bandykite vėliau.");sLd(false)}}
   var tabSt=function(t){return{padding:"8px 20px",border:"none",borderBottom:tab===t?"2px solid "+C.ac:"2px solid transparent",background:"transparent",color:tab===t?C.ac:C.t2,fontFamily:F,fontSize:12,fontWeight:tab===t?700:500,cursor:"pointer"}};
   return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,padding:16}}>
@@ -385,11 +385,11 @@ function AuthScreen(p){
             <Btn onClick={loginAD} disabled={!un||!ap||ld} style={{width:"100%",justifyContent:"center"}}>{ld?"Jungiamasi...":"Prisijungti per AD →"}</Btn>
           </div>}
           {tab==="local"&&<div>
-            <div style={{fontSize:11,color:C.t2,marginBottom:14}}>Administratoriaus prisijungimas.</div>
-            <Inp label="El. paštas" type="email" value={em} onChange={sE} ph="vardas@imone.lt"/>
-            <Inp label="Slaptažodis" type="password" value={pw} onChange={sP} ph="••••••••"/>
+            <div style={{fontSize:11,color:C.t2,marginBottom:14}}>Vietinio administratoriaus prisijungimas.</div>
+            <Inp label="Vartotojo vardas" value={lu} onChange={sLU} ph="geoadmin"/>
+            <Inp label="Slaptažodis" type="password" value={lp} onChange={sLP} ph="••••••••"/>
             {err&&<div style={{color:C.rd,fontSize:10,marginBottom:8,fontFamily:F}}>⚠ {err}</div>}
-            <Btn onClick={loginLocal} disabled={!em||!pw} style={{width:"100%",justifyContent:"center"}}>Prisijungti →</Btn>
+            <Btn onClick={loginLocal} disabled={!lu||!lp||ld} style={{width:"100%",justifyContent:"center"}}>{ld?"Jungiamasi...":"Prisijungti →"}</Btn>
           </div>}
         </div>
       </div>
@@ -412,23 +412,23 @@ function PendingScreen(p){
     </div>
   </div>}
 
-function PasswordChange(p){var _np=useState("");var np=_np[0],sNP=_np[1];var _np2=useState("");var np2=_np2[0],sNP2=_np2[1];var _er=useState("");var err=_er[0],sEr=_er[1];
-  function change(){sEr("");if(np.length<4){sEr("Min. 4 simboliai");return}if(np!==np2){sEr("Slaptažodžiai nesutampa");return}p.onChangePassword(np)}
+function PasswordChange(p){var _np=useState("");var np=_np[0],sNP=_np[1];var _np2=useState("");var np2=_np2[0],sNP2=_np2[1];var _er=useState("");var err=_er[0],sEr=_er[1];var _ld=useState(false);var ld=_ld[0],sLd=_ld[1];
+  async function change(){sEr("");if(np.length<4){sEr("Min. 4 simboliai");return}if(np!==np2){sEr("Slaptažodžiai nesutampa");return}sLd(true);try{var r=await fetch("/api/auth/change-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:p.user.id,newPassword:np})});var d=await r.json();if(!r.ok){sEr(d.error||"Klaida");sLd(false);return}p.onChangePassword(d.user)}catch(e){sEr("Serverio klaida.");sLd(false)}}
   return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,padding:16}}><div style={{width:"100%",maxWidth:380,textAlign:"center"}}>
     <div style={{width:52,height:52,borderRadius:12,background:"linear-gradient(135deg,"+C.ac+",#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px"}}>🔑</div>
     <h2 style={{fontSize:20,fontWeight:800,color:C.tx,marginBottom:4}}>Slaptažodžio keitimas</h2><p style={{color:C.t2,fontSize:11,marginBottom:20}}>Pirmą kartą prisijungiant privalote pasikeisti slaptažodį.</p>
-    <div style={{background:C.s1,border:"1px solid "+C.b1,borderRadius:12,padding:20,textAlign:"left"}}><Inp label="Naujas slaptažodis" type="password" value={np} onChange={sNP} ph="Min. 4 simboliai" req/><Inp label="Pakartokite slaptažodį" type="password" value={np2} onChange={sNP2} ph="Pakartokite" req/>{err&&<div style={{color:C.rd,fontSize:10,marginBottom:6,fontFamily:F}}>{err}</div>}<Btn onClick={change} disabled={!np||!np2} style={{width:"100%",justifyContent:"center"}}>Patvirtinti</Btn></div></div></div>}
+    <div style={{background:C.s1,border:"1px solid "+C.b1,borderRadius:12,padding:20,textAlign:"left"}}><Inp label="Naujas slaptažodis" type="password" value={np} onChange={sNP} ph="Min. 4 simboliai" req/><Inp label="Pakartokite slaptažodį" type="password" value={np2} onChange={sNP2} ph="Pakartokite" req/>{err&&<div style={{color:C.rd,fontSize:10,marginBottom:6,fontFamily:F}}>{err}</div>}<Btn onClick={change} disabled={!np||!np2||ld} style={{width:"100%",justifyContent:"center"}}>{ld?"Saugoma...":"Patvirtinti"}</Btn></div></div></div>}
 
 /* ═════ PASSWORD CHANGE PAGE (voluntary) ════════════════════ */
-function PasswordChangePage(p){var _op=useState("");var op=_op[0],sOP=_op[1];var _np=useState("");var np=_np[0],sNP=_np[1];var _np2=useState("");var np2=_np2[0],sNP2=_np2[1];var _er=useState("");var err=_er[0],sEr=_er[1];var _ok=useState(false);var ok=_ok[0],sOK=_ok[1];
-  function change(){sEr("");if(op!==p.user.password){sEr("Neteisingas dabartinis slaptažodis");return}if(np.length<4){sEr("Naujas slaptažodis per trumpas (min. 4)");return}if(np!==np2){sEr("Slaptažodžiai nesutampa");return}p.onChangePassword(np);sOK(true);sOP("");sNP("");sNP2("")}
+function PasswordChangePage(p){var _op=useState("");var op=_op[0],sOP=_op[1];var _np=useState("");var np=_np[0],sNP=_np[1];var _np2=useState("");var np2=_np2[0],sNP2=_np2[1];var _er=useState("");var err=_er[0],sEr=_er[1];var _ok=useState(false);var ok=_ok[0],sOK=_ok[1];var _ld=useState(false);var ld=_ld[0],sLd=_ld[1];
+  async function change(){sEr("");if(!op){sEr("Įveskite dabartinį slaptažodį");return}if(np.length<4){sEr("Naujas slaptažodis per trumpas (min. 4)");return}if(np!==np2){sEr("Slaptažodžiai nesutampa");return}sLd(true);try{var r=await fetch("/api/auth/change-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:p.user.id,oldPassword:op,newPassword:np})});var d=await r.json();if(!r.ok){sEr(d.error||"Klaida");sLd(false);return}p.onChangePassword(d.user);sOK(true);sOP("");sNP("");sNP2("")}catch(e){sEr("Serverio klaida.");sLd(false)}}
   return <div style={{maxWidth:400}}><h2 style={{fontSize:18,fontWeight:800,color:C.tx,fontFamily:F,marginBottom:12}}>🔑 Keisti slaptažodį</h2>
     {ok&&<div style={{background:C.gnD,border:"1px solid "+C.gn+"33",borderRadius:8,padding:10,marginBottom:12}}><div style={{fontSize:12,color:C.gn,fontFamily:F,fontWeight:600}}>✅ Slaptažodis sėkmingai pakeistas!</div></div>}
     <Inp label="Dabartinis slaptažodis" type="password" value={op} onChange={function(v){sOP(v);sOK(false)}} ph="Įveskite dabartinį" req/>
     <Inp label="Naujas slaptažodis" type="password" value={np} onChange={sNP} ph="Min. 4 simboliai" req/>
     <Inp label="Pakartokite naują slaptažodį" type="password" value={np2} onChange={sNP2} ph="Pakartokite" req/>
     {err&&<div style={{color:C.rd,fontSize:10,marginBottom:6,fontFamily:F}}>{err}</div>}
-    <Btn onClick={change} disabled={!op||!np||!np2}>Pakeisti slaptažodį</Btn></div>}
+    <Btn onClick={change} disabled={!op||!np||!np2||ld}>{ld?"Saugoma...":"Pakeisti slaptažodį"}</Btn></div>}
 
 /* ══════════ MAIN APP ════════════════════════════════════════ */
 function App(){
@@ -451,7 +451,7 @@ function App(){
     if(u.role==="pending"){sView("pending");sSet("gp-session",u);return}
     sView(u.role==="orderer"?"my":u.role==="admin"?"inbox":"assigned");sSet("gp-session",u)}
   function logout(){sUser(null);sSet("gp-session",null)}
-  function changePassword(newPw){var updated=Object.assign({},user,{password:newPw,mustChangePassword:false});sUsers(function(p){return p.map(function(u){return u.id===updated.id?updated:u})});sUser(updated);sSet("gp-session",updated)}
+  function changePassword(updatedUser){sUsers(function(p){return p.map(function(u){return u.id===updatedUser.id?updatedUser:u})});sUser(updatedUser);sSet("gp-session",updatedUser)}
   function addN(to,msg,orderId){sNotifs(function(p){return[{id:uid(),to:to,message:msg,time:now(),read:false,orderId:orderId||null}].concat(p)})}
 
   function addOrder(o){sOrders(function(p){return[o].concat(p)});users.filter(function(u){return u.role==="admin"}).forEach(function(a){addN(a.id,"Naujas užsakymas: "+(TL[o.type]||o.type)+" — "+o.address,o.id)});sView("my")}
@@ -464,7 +464,7 @@ function App(){
       if(up.status==="Atmestas")addN(up.createdBy,"❌ Atmestas: "+up.address,up.id);
       if(["Pamatuota","Braizoma","Derinama","Priimtas"].indexOf(up.status)!==-1)addN(up.createdBy,"ℹ️ Būsena: "+(SL[up.status]||up.status)+" — "+up.address,up.id)}}
   function deleteOrder(id){sOrders(function(p){return p.filter(function(o){return o.id!==id})})}
-  function resetPw(uid2,pw){sUsers(function(p){return p.map(function(u){return u.id===uid2?Object.assign({},u,{password:pw,mustChangePassword:true}):u})})}
+  async function resetPw(uid2,pw){try{var r=await fetch("/api/auth/change-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:uid2,newPassword:pw,forceChange:true})});if(r.ok){var d=await r.json();sUsers(function(p){return p.map(function(u){return u.id===uid2?Object.assign({},u,d.user,{mustChangePassword:true}):u})})}}catch(e){}}
   function addUser(nu){sUsers(function(p){return p.concat([nu])})}
   function deleteUser(id){sUsers(function(p){return p.filter(function(u){return u.id!==id})})}
   function assignRole(uid2,role){sUsers(function(p){return p.map(function(u){return u.id===uid2?Object.assign({},u,{role:role}):u})})}
