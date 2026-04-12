@@ -1,6 +1,6 @@
 {
   "name": "geopoint",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "description": "Geopoint — Geodezijos užsakymų valdymo sistema",
   "main": "server.js",
   "scripts": {
